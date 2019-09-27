@@ -106,7 +106,8 @@
 #include "gui.h"
 #include "core/container_func.hpp"
 #include "tunnelbridge_map.h"
-
+#include "build_confirmation_func.h"
+#include "gfx_func.h"
 #include <map>
 #include <vector>
 #include <math.h>
@@ -3107,7 +3108,7 @@ void CheckMarkDirtyFocusedRoutePaths(const Vehicle *veh)
  *
  * @ingroup dirty
  */
-static void SetSelectionTilesDirty()
+void SetSelectionTilesDirty()
 {
 	int x_size = _thd.size.x;
 	int y_size = _thd.size.y;
@@ -3487,6 +3488,8 @@ static void PlaceObject()
 	Point pt;
 	Window *w;
 
+    if (BuildConfirmationWindowProcessViewportClick()) return;
+
 	pt = GetTileBelowCursor();
 	if (pt.x == -1) return;
 
@@ -3524,32 +3527,52 @@ bool HandleViewportDoubleClicked(Window *w, int x, int y)
 
 bool HandleViewportClicked(const ViewPort *vp, int x, int y, bool double_click)
 {
-	/* No click in smallmap mode except for plan making. */
-	if (vp->zoom >= ZOOM_LVL_DRAW_MAP && !(_thd.place_mode == HT_POINT && _thd.select_proc == DDSP_DRAW_PLANLINE)) return true;
+    	if (_move_pressed) return false;
 
-	const Vehicle *v = CheckClickOnVehicle(vp, x, y);
+            	// Allow scrolling viewport with mouse even in selection mode,
+                    	// unless we select line or area, or perform drag&drop
+                            	if ((_thd.place_mode & HT_DRAG_MASK) != HT_NONE && !(_thd.place_mode & HT_SCROLL_VIEWPORT)) {
+        		PlaceObject();
+        		return true;
+        	}
 
-	if (_thd.place_mode & HT_VEHICLE) {
-		if (v != nullptr && VehicleClicked(v)) return true;
-	}
+            	return false;
+    }
 
-	/* Vehicle placement mode already handled above. */
-	if ((_thd.place_mode & HT_DRAG_MASK) != HT_NONE) {
-		if (_thd.place_mode & HT_POLY) {
-			/* In polyline mode double-clicking on a single white line, finishes current polyline.
-			 * If however the user double-clicks on a line that has a white and a blue section,
-			 * both lines (white and blue) will be constructed consecutively. */
-			static bool stop_snap_on_double_click = false;
-			if (double_click && stop_snap_on_double_click) {
-				SetRailSnapMode(RSM_NO_SNAP);
-				return true;
-			}
-			stop_snap_on_double_click = !(_thd.drawstyle & HT_LINE) || (_thd.dir2 == HT_DIR_END);
-		}
+bool HandleViewportMouseUp(const ViewPort *vp, int x, int y) {
+    if (_move_pressed) return false;
 
-		PlaceObject();
-		return true;
-	}
+    /* No click in smallmap mode except for plan making. */
+    if (vp->zoom >= ZOOM_LVL_DRAW_MAP &&
+        !(_thd.place_mode == HT_POINT && _thd.select_proc == DDSP_DRAW_PLANLINE))
+        return true;
+
+    const Vehicle *v = CheckClickOnVehicle(vp, x, y);
+
+    if (_thd.place_mode & HT_VEHICLE) {
+        if (v != nullptr && VehicleClicked(v)) return true;
+    }
+
+    /* Vehicle placement mode already handled above. */
+//	if ((_thd.place_mode & HT_DRAG_MASK) != HT_NONE) {
+//		if (_thd.place_mode & HT_POLY) {
+//			/* In polyline mode double-clicking on a single white line, finishes current polyline.
+//			 * If however the user double-clicks on a line that has a white and a blue section,
+//			 * both lines (white and blue) will be constructed consecutively. */
+//			static bool stop_snap_on_double_click = false;
+//			if (double_click && stop_snap_on_double_click) {
+//				SetRailSnapMode(RSM_NO_SNAP);
+//				return true;
+//			}
+//			stop_snap_on_double_click = !(_thd.drawstyle & HT_LINE) || (_thd.dir2 == HT_DIR_END);
+//		}
+//		PlaceObject();
+//		return true;
+    if ((_thd.place_mode & HT_DRAG_MASK) != HT_NONE) {
+        PlaceObject();
+        return true;
+    }
+
 
 	if (CheckClickOnViewportSign(vp, x, y)) return true;
 	bool result = CheckClickOnLandscape(vp, x, y);
@@ -3864,8 +3887,10 @@ void UpdateTileSelection()
 
 						default: NOT_REACHED();
 					}
-					_thd.selstart.x = x1 & ~TILE_UNIT_MASK;
-					_thd.selstart.y = y1 & ~TILE_UNIT_MASK;
+                    if (!ConfirmationWindowShown()) {
+                        _thd.selstart.x = x1 & ~TILE_UNIT_MASK;
+                        _thd.selstart.y = y1 & ~TILE_UNIT_MASK;
+                    }
 					_thd.selend.x = x1;
 					_thd.selend.y = y1;
 					break;
@@ -3878,6 +3903,7 @@ void UpdateTileSelection()
 	}
 
 	if (new_drawstyle & HT_LINE) CalcNewPolylineOutersize();
+    if (ConfirmationWindowShown()) return;
 
 	/* redraw selection */
 	if (_thd.drawstyle != new_drawstyle ||
@@ -3942,7 +3968,9 @@ void VpStartPlaceSizing(TileIndex tile, ViewportPlaceMethod method, ViewportDrag
 	}
 
 	HighLightStyle others = _thd.place_mode & ~(HT_DRAG_MASK | HT_DIR_MASK);
-	if ((_thd.place_mode & HT_DRAG_MASK) == HT_RECT) {
+    	if (method == VPM_SINGLE_TILE) {
+            /* Nothing to do. */
+        } else if ((_thd.place_mode & HT_DRAG_MASK) == HT_RECT) {
 		_thd.place_mode = HT_SPECIAL | others;
 		_thd.next_drawstyle = HT_RECT | others;
 	} else if (_thd.place_mode & (HT_RAIL | HT_LINE)) {
@@ -3988,7 +4016,7 @@ void VpSetPresizeRange(TileIndex from, TileIndex to)
 	}
 }
 
-static void VpStartPreSizing()
+void VpStartPreSizing()
 {
 	_thd.selend.x = -1;
 	_special_mouse_mode = WSM_PRESIZE;
@@ -4675,6 +4703,10 @@ void VpSelectTilesWithMethod(int x, int y, ViewportPlaceMethod method)
 	int limit = 0;
 
 	switch (method) {
+//        case VPM_SINGLE_TILE:
+//            _thd.selstart.x = x;
+//            _thd.selstart.y = y;
+//            break;
 		case VPM_X_OR_Y: // drag in X or Y direction
 			if (abs(sy - y) < abs(sx - x)) {
 				y = sy;
@@ -4851,13 +4883,19 @@ EventState VpHandlePlaceSizingDrag()
 	/* While dragging execute the drag procedure of the corresponding window (mostly VpSelectTilesWithMethod() ).
 	 * Do it even if the button is no longer pressed to make sure that OnPlaceDrag was called at least once. */
 	w->OnPlaceDrag(_thd.select_method, _thd.select_proc, GetTileBelowCursor());
-	if (_left_button_down) return ES_HANDLED;
-
+    if (_left_button_down) {
+        HideBuildConfirmationWindow();
+        w->OnPlaceDrag(_thd.select_method, _thd.select_proc, GetTileBelowCursor());
+        return ES_HANDLED;
+    }
+    ShowBuildConfirmationWindow(); // This will also remember tile selection, so it's okay for the code below to change selection
 	/* mouse button released..
 	 * keep the selected tool, but reset it to the original mode. */
 	_special_mouse_mode = WSM_NONE;
 	HighLightStyle others = _thd.place_mode & ~(HT_DRAG_MASK | HT_DIR_MASK);
-	if ((_thd.next_drawstyle & HT_DRAG_MASK) == HT_RECT) {
+    if (_thd.select_method == VPM_SINGLE_TILE) {
+        goto place_mouseup;
+    } else if ((_thd.next_drawstyle & HT_DRAG_MASK) == HT_RECT) {
 		_thd.place_mode = HT_RECT | others;
 	} else if (_thd.select_method & VPM_SIGNALDIRS) {
 		_thd.place_mode = HT_RECT | others;
@@ -4872,10 +4910,8 @@ EventState VpHandlePlaceSizingDrag()
 		if (GetRailSnapMode() == RSM_SNAP_TO_TILE) SetRailSnapMode(RSM_NO_SNAP);
 		if (_thd.drawstyle == HT_NONE) return ES_HANDLED;
 	}
-	HideMeasurementTooltips();
-
-	w->OnPlaceMouseUp(_thd.select_method, _thd.select_proc, _thd.selend, TileVirtXY(_thd.selstart.x, _thd.selstart.y), TileVirtXY(_thd.selend.x, _thd.selend.y));
-	return ES_HANDLED;
+    place_mouseup:
+		return ES_HANDLED;
 }
 
 /**
@@ -4891,6 +4927,24 @@ void SetObjectToPlaceWnd(CursorID icon, PaletteID pal, HighLightStyle mode, Wind
 }
 
 #include "table/animcursors.h"
+
+static WindowClass _last_selected_window_class;
+static WindowNumber _last_selected_window_number;
+
+    /** Place object from the build confirmation dialog */
+void ConfirmPlacingObject()
+{
+    Window *w = _thd.GetCallbackWnd();
+    if (w == NULL) {
+        ResetObjectToPlace();
+        return;
+    }
+
+    _last_selected_window_class = _thd.window_class;
+    _last_selected_window_number = _thd.window_number;
+    HideMeasurementTooltips();
+    w->OnPlaceMouseUp(_thd.select_method, _thd.select_proc, _thd.selend, TileVirtXY(_thd.selstart.x, _thd.selstart.y), TileVirtXY(_thd.selend.x, _thd.selend.y));
+}
 
 /**
  * Change the cursor and mouse click/drag handling to a mode for performing special operations like tile area selection, object placement, etc.
@@ -4955,6 +5009,14 @@ void SetObjectToPlace(CursorID icon, PaletteID pal, HighLightStyle mode, WindowC
 void ResetObjectToPlace()
 {
 	SetObjectToPlace(SPR_CURSOR_MOUSE, PAL_NONE, HT_NONE, WC_MAIN_WINDOW, 0);
+    HideBuildConfirmationWindow();
+    MoveAllHiddenWindowsBackToScreen();
+}
+
+void ToolbarSelectLastTool() {
+    Window *w = FindWindowById(_last_selected_window_class, _last_selected_window_number);
+    if (w != NULL) w->SelectLastTool();
+    _last_selected_window_class = WC_INVALID;
 }
 
 ViewportMapType ChangeRenderMode(const ViewPort *vp, bool down) {

@@ -41,7 +41,7 @@ uint DropDownListStringItem::Width() const
 
 void DropDownListStringItem::Draw(int left, int right, int top, int bottom, bool sel, Colours bg_colour) const
 {
-	DrawString(left + WD_FRAMERECT_LEFT, right - WD_FRAMERECT_RIGHT, top, this->String(), sel ? TC_WHITE : TC_BLACK);
+	DrawString(left + WD_FRAMERECT_LEFT, right - WD_FRAMERECT_RIGHT, Center(top, bottom - top), this->String(), sel ? TC_WHITE : TC_BLACK);
 }
 
 /**
@@ -131,8 +131,11 @@ struct DropdownWindow : Window {
 	byte click_delay;             ///< Timer to delay selection.
 	bool drag_mode;
 	bool instant_close;           ///< Close the window when the mouse button is raised.
+	bool left_button_state;       ///< Close the window when the mouse button is clicked outside the window.
 	int scrolling;                ///< If non-zero, auto-scroll the item list (one time).
 	GUITimer scrolling_timer;     ///< Timer for auto-scroll of the item list.
+	bool left_button_scrolling;   ///< The list is scrolled with left mouse button
+	int left_button_scroll_pos;   ///< Initial mouse position for left button scrolling
 	Point position;               ///< Position of the topleft corner of the window.
 	Scrollbar *vscroll;
 	DropDownSyncFocus sync_parent_focus; ///< Call parent window's OnFocus[Lost]().
@@ -189,9 +192,13 @@ struct DropdownWindow : Window {
 		this->parent_button    = button;
 		this->selected_index   = selected;
 		this->click_delay      = 0;
-		this->drag_mode        = true;
+		this->drag_mode        = instant_close;
 		this->instant_close    = instant_close;
+		this->scrolling        = 0;
 		this->scrolling_timer  = GUITimer(MILLISECONDS_PER_TICK);
+		this->left_button_scrolling = false;
+		this->left_button_scroll_pos = -1;
+		this->left_button_state = _left_button_down;
 	}
 
 	~DropdownWindow()
@@ -280,6 +287,7 @@ struct DropdownWindow : Window {
 
 	virtual void OnClick(Point pt, int widget, int click_count)
 	{
+		if (this->left_button_scrolling) return;
 		if (widget != WID_DM_ITEMS) return;
 		int item;
 		if (this->GetDropDownItem(item)) {
@@ -354,6 +362,45 @@ struct DropdownWindow : Window {
 				this->SetDirty();
 			}
 		}
+
+		// Close dropdown if user clicks outside of it
+		if (_left_button_down && !this->left_button_state && (
+			_cursor.pos.x < this->left || _cursor.pos.x > this->left + this->width ||
+			_cursor.pos.y < this->top || _cursor.pos.y > this->top + this->height)) {
+			delete this;
+			return;
+		} else {
+			if (_left_button_down && !this->left_button_state) {
+				if (GetWidgetFromPos(this, _cursor.pos.x - this->left, _cursor.pos.y - this->top) == WID_DM_ITEMS) {
+					this->left_button_scroll_pos = _cursor.pos.y;
+				} else {
+					this->left_button_scroll_pos = -1;
+				}
+			}
+			if (!_left_button_down && this->left_button_state) {
+				this->left_button_scrolling = false;
+				this->left_button_scroll_pos = -1;
+				this->mouse_capture_widget = -1;
+			}
+			this->left_button_state = _left_button_down;
+		}
+
+		// Scroll item list with left mouse button
+		if (!this->left_button_scrolling &&
+			_left_button_down &&
+			this->left_button_scroll_pos != -1 &&
+			abs(this->left_button_scroll_pos - _cursor.pos.y) > (int)(*list)[0]->Height(this->width)) {
+			this->left_button_scrolling = true;
+			this->mouse_capture_widget = WID_DM_ITEMS;
+		}
+		if (this->left_button_scrolling) {
+			int height = (*list)[0]->Height(this->width);
+			int pos = (this->left_button_scroll_pos - _cursor.pos.y) / height;
+			if (pos != 0) {
+				this->scrolling = pos;
+				this->left_button_scroll_pos = _cursor.pos.y;
+			}
+		}
 	}
 
 	virtual void OnFocus(Window *previously_focused_window)
@@ -414,7 +461,7 @@ void ShowDropDownListAt(Window *w, DropDownList &&list, int selected, int button
 	bool above = false;
 
 	/* Available height below (or above, if the dropdown is placed above the widget). */
-	uint available_height = (uint)max(GetMainViewBottom() - top - 4, 0);
+	uint available_height = (uint)max(_screen.height - top - 4, 0);
 
 	/* If the dropdown doesn't fully fit below the widget... */
 	if (height > available_height) {
@@ -458,7 +505,7 @@ void ShowDropDownListAt(Window *w, DropDownList &&list, int selected, int button
 	/* The dropdown starts scrolling downwards when opening it towards
 	 * the top and holding down the mouse button. It can be fooled by
 	 * opening the dropdown scrolled to the very bottom.  */
-	if (above && scroll) dropdown->vscroll->UpdatePosition(INT_MAX);
+	//if (above && scroll) dropdown->vscroll->UpdatePosition(INT_MAX);
 }
 
 /**

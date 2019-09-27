@@ -52,6 +52,7 @@ enum DisplayOptions {
 extern GameMode _game_mode;
 extern SwitchMode _switch_mode;
 extern bool _exit_game;
+extern bool _restart_game;
 
 #if defined(WIN32)
 extern bool _in_event_loop_post_crash;

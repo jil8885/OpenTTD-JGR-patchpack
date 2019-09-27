@@ -70,6 +70,7 @@ void EndSpriteCombine();
 
 bool HandleViewportDoubleClicked(Window *w, int x, int y);
 bool HandleViewportClicked(const ViewPort *vp, int x, int y, bool double_click);
+bool HandleViewportMouseUp(const ViewPort *vp, int x, int y);
 void SetRedErrorSquare(TileIndex tile);
 void SetTileSelectSize(int w, int h);
 void SetTileSelectBigSize(int ox, int oy, int sx, int sy);
@@ -121,5 +122,5 @@ void DrawSelectionSprite(SpriteID image, PaletteID pal, const TileInfo *ti, int 
 struct Town;
 void SetViewportCatchmentStation(const Station *st, bool sel);
 void SetViewportCatchmentTown(const Town *t, bool sel);
-
+void ToolbarSelectLastTool();
 #endif /* VIEWPORT_FUNC_H */

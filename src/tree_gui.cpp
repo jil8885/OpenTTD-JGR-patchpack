@@ -18,6 +18,7 @@
 #include "command_func.h"
 #include "sound_func.h"
 #include "tree_map.h"
+#include "window_func.h"
 
 #include "widgets/tree_widget.h"
 
@@ -44,6 +45,11 @@ public:
 	{
 		this->InitNested(window_number);
 		ResetObjectToPlace();
+	}
+
+	~BuildTreesWindow()
+	{
+		if (_thd.GetCallbackWnd() == this) this->OnPlaceObjectAbort();
 	}
 
 	/**
@@ -134,6 +140,7 @@ public:
 	void OnPlaceObject(Point pt, TileIndex tile) override
 	{
 		VpStartPlaceSizing(tile, VPM_X_AND_Y, DDSP_PLANT_TREES);
+		MoveAllWindowsOffScreen();
 	}
 
 	void OnPlaceDrag(ViewportPlaceMethod select_method, ViewportDragDropSelectionProcess select_proc, Point pt) override
@@ -146,6 +153,7 @@ public:
 		if (pt.x != -1 && select_proc == DDSP_PLANT_TREES) {
 			DoCommandP(end_tile, this->tree_to_plant, start_tile,
 				CMD_PLANT_TREE | CMD_MSG(STR_ERROR_CAN_T_PLANT_TREE_HERE));
+			MoveAllHiddenWindowsBackToScreen();
 		}
 	}
 
@@ -160,7 +168,10 @@ public:
 
 	void OnPlaceObjectAbort() override
 	{
+		MoveAllHiddenWindowsBackToScreen();
 		this->RaiseButtons();
+
+		ResetObjectToPlace();
 	}
 };
 

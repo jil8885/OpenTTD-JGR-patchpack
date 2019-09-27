@@ -16,7 +16,6 @@
 
 /** Music driver making use of libtimidity. */
 class MusicDriver_LibTimidity : public MusicDriver {
-	int volume;
 public:
 	/* virtual */ const char *Start(const char * const *param);
 

@@ -166,7 +166,7 @@ static const NWidgetPart _nested_thin_news_widgets[] = {
 			EndContainer(),
 		EndContainer(),
 		NWidget(WWT_EMPTY, COLOUR_WHITE, WID_N_MESSAGE), SetMinimalSize(428, 48), SetFill(1, 0), SetPadding(0, 5, 0, 5),
-		NWidget(NWID_VIEWPORT, INVALID_COLOUR, WID_N_VIEWPORT), SetMinimalSize(426, 70), SetPadding(1, 2, 2, 2),
+    NWidget(NWID_VIEWPORT, INVALID_COLOUR, WID_N_VIEWPORT), SetSizingType(NWST_VIEWPORT), SetMinimalSize(426, 70), SetPadding(1, 2, 2, 2),
 	EndContainer(),
 };
 
@@ -188,9 +188,9 @@ static const NWidgetPart _nested_small_news_widgets[] = {
 	/* Main part */
 	NWidget(WWT_PANEL, COLOUR_LIGHT_BLUE, WID_N_HEADLINE),
 		NWidget(WWT_INSET, COLOUR_LIGHT_BLUE, WID_N_INSET), SetPadding(2, 2, 2, 2),
-			NWidget(NWID_VIEWPORT, INVALID_COLOUR, WID_N_VIEWPORT), SetPadding(1, 1, 1, 1), SetMinimalSize(274, 47), SetFill(1, 0),
+    NWidget(NWID_VIEWPORT, INVALID_COLOUR, WID_N_VIEWPORT), SetSizingType(NWST_VIEWPORT), SetPadding(1, 1, 1, 1), SetMinimalSize(274, 47), SetFill(1, 0),
 		EndContainer(),
-		NWidget(WWT_EMPTY, COLOUR_WHITE, WID_N_MESSAGE), SetMinimalSize(275, 20), SetFill(1, 0), SetPadding(0, 5, 0, 5),
+		NWidget(WWT_EMPTY, COLOUR_WHITE, WID_N_MESSAGE), SetMinimalSize(275, 20), SetFill(1, 0), SetPadding(0, 5, 0, 5), SetSizingType(NWST_STEP),
 	EndContainer(),
 };
 
@@ -337,6 +337,7 @@ struct NewsWindow : Window {
 				break;
 
 			case WID_N_MESSAGE:
+                size->width = GetMinSizing(NWST_WINDOW_LENGTH, size->width);
 				CopyInDParam(0, this->ni->params, lengthof(this->ni->params));
 				str = this->ni->string_id;
 				break;
@@ -379,7 +380,7 @@ struct NewsWindow : Window {
 	{
 		switch (widget) {
 			case WID_N_CAPTION:
-				DrawCaption(r, COLOUR_LIGHT_BLUE, this->owner, STR_NEWS_MESSAGE_CAPTION);
+				DrawCaption(r, COLOUR_LIGHT_BLUE, this->owner, STR_NEWS_MESSAGE_CAPTION, this->GetWidget<NWidgetCore>(WID_N_CAPTION), this);
 				break;
 
 			case WID_N_PANEL:
@@ -1032,7 +1033,7 @@ struct MessageHistoryWindow : Window {
 	void UpdateWidgetSize(int widget, Dimension *size, const Dimension &padding, Dimension *fill, Dimension *resize) override
 	{
 		if (widget == WID_MH_BACKGROUND) {
-			this->line_height = FONT_HEIGHT_NORMAL + 2;
+			this->line_height = GetMinSizing(NWST_STEP, FONT_HEIGHT_NORMAL + 2);
 			resize->height = this->line_height;
 
 			/* Months are off-by-one, so it's actually 8. Not using
@@ -1063,7 +1064,7 @@ struct MessageHistoryWindow : Window {
 		}
 
 		/* Fill the widget with news items. */
-		int y = r.top + this->top_spacing;
+		int y = Center(r.top + this->top_spacing, this->line_height, FONT_HEIGHT_NORMAL);
 		bool rtl = _current_text_dir == TD_RTL;
 		uint date_left  = rtl ? r.right - WD_FRAMERECT_RIGHT - this->date_width : r.left + WD_FRAMERECT_LEFT;
 		uint date_right = rtl ? r.right - WD_FRAMERECT_RIGHT : r.left + WD_FRAMERECT_LEFT + this->date_width;

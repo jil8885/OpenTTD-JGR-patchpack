@@ -105,6 +105,7 @@ tgp.cpp
 tile_map.cpp
 tilearea.cpp
 townname.cpp
+
 #if WIN32
 #else
 	#if OS2
@@ -153,6 +154,7 @@ base_station_base.h
 bitmap_type.h
 bmp.h
 bridge.h
+build_confirmation_func.h
 cargo_type.h
 cargoaction.h
 cargomonitor.h
@@ -396,6 +398,7 @@ tilehighlight_func.h
 tilehighlight_type.h
 tilematrix_type.hpp
 timetable.h
+
 toolbar_gui.h
 town.h
 town_gui.h
@@ -494,6 +497,7 @@ airport_gui.cpp
 autoreplace_gui.cpp
 bootstrap_gui.cpp
 bridge_gui.cpp
+build_confirmation_gui.cpp
 build_vehicle_gui.cpp
 cheat_gui.cpp
 company_gui.cpp

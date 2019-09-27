@@ -40,6 +40,7 @@
 #include "network/network_func.h"
 #include "guitimer_func.h"
 #include "news_func.h"
+#include "build_confirmation_func.h"
 
 #include "safeguards.h"
 
@@ -51,9 +52,12 @@ enum ViewportAutoscrolling {
 	VA_EVERY_VIEWPORT,            //!< Scroll all viewports at their edges.
 };
 
+static bool _dragging_window; ///< A window is being dragged or resized.
 static Point _drag_delta; ///< delta between mouse cursor and upper left corner of dragged window
 static Window *_mouseover_last_w = nullptr; ///< Window of the last OnMouseOver event.
 static Window *_last_scroll_window = nullptr; ///< Window of the last scroll event.
+static Point _left_button_down_pos; ///< Position of left mouse button down event, to handle the difference between click and drag
+static bool _dragging_widget; ///< A widget inside the window is being dragged, prevent the window itself from being dragged
 
 /** List of windows opened at the screen sorted from the front. */
 WindowBase *_z_front_window = nullptr;
@@ -76,12 +80,13 @@ Point _cursorpos_drag_start;
 
 int _scrollbar_start_pos;
 int _scrollbar_size;
+bool _scrollbar_finger_drag;
 byte _scroller_click_timeout = 0;
 
 Window *_scrolling_viewport; ///< A viewport is being scrolled with the mouse.
 Rect _scrolling_viewport_bound; ///< A viewport is being scrolled with the mouse, the overlay currently covers this viewport rectangle.
 bool _mouse_hovering;      ///< The mouse is hovering over the same point.
-
+static bool _left_button_dragged;
 SpecialMouseMode _special_mouse_mode; ///< Mode of the mouse.
 
 /**
@@ -1524,11 +1529,14 @@ void Window::FindWindowPlacementAndResize(int def_width, int def_height)
 		const Window *wt = FindWindowById(WC_STATUS_BAR, 0);
 		if (wt != nullptr) free_height -= wt->height;
 		wt = FindWindowById(WC_MAIN_TOOLBAR, 0);
-		if (wt != nullptr) free_height -= wt->height;
+		if (wt != NULL && !vertical_toolbar) free_height -= wt->height;
 
 		int enlarge_x = max(min(def_width  - this->width,  _screen.width - this->width),  0);
 		int enlarge_y = max(min(def_height - this->height, free_height   - this->height), 0);
-
+		if (wt && vertical_toolbar && enlarge_x > _screen.width - wt->width * 2) {
+			enlarge_x = _screen.width - wt->width * 2;
+		}
+ 
 		/* X and Y has to go by step.. calculate it.
 		 * The cast to int is necessary else x/y are implicitly casted to
 		 * unsigned int, which won't work. */
@@ -1548,7 +1556,7 @@ void Window::FindWindowPlacementAndResize(int def_width, int def_height)
 	if (nx + this->width > _screen.width) nx -= (nx + this->width - _screen.width);
 
 	const Window *wt = FindWindowById(WC_MAIN_TOOLBAR, 0);
-	ny = max(ny, (wt == nullptr || this == wt || this->top == 0) ? 0 : wt->height);
+	ny = max(ny, (wt == NULL || this == wt || this->top == 0) ? 0 : wt->height);
 	nx = max(nx, 0);
 
 	if (this->viewport != nullptr) {
@@ -1655,12 +1663,15 @@ static Point GetAutoPlacePosition(int width, int height)
 	Point pt;
 
 	bool rtl = _current_text_dir == TD_RTL;
-
+	bool vertical_toolbar = _settings_client.gui.vertical_toolbar && _game_mode != GM_EDITOR;
 	/* First attempt, try top-left of the screen */
 	const Window *main_toolbar = FindWindowByClass(WC_MAIN_TOOLBAR);
-	const int toolbar_y =  main_toolbar != nullptr ? main_toolbar->height : 0;
-	if (IsGoodAutoPlace1(rtl ? _screen.width - width : 0, toolbar_y, width, height, toolbar_y, pt)) return pt;
-
+	const int toolbar_y = !vertical_toolbar && main_toolbar != NULL ? main_toolbar->height : 0;
+	if (vertical_toolbar) {
+		if (IsGoodAutoPlace1(main_toolbar != NULL ? main_toolbar->width : 0, 0, width, height, toolbar_y, pt)) return pt;
+	} else {
+		if (IsGoodAutoPlace1(rtl ? _screen.width - width : 0, toolbar_y, width, height, toolbar_y, pt)) return pt;
+	}
 	/* Second attempt, try around all existing windows.
 	 * The new window must be entirely on-screen, and not overlap with an existing window.
 	 * Eight starting points are tried, two at each corner.
@@ -1723,8 +1734,15 @@ Point GetToolbarAlignedWindowPosition(int window_width)
 {
 	const Window *w = FindWindowById(WC_MAIN_TOOLBAR, 0);
 	assert(w != nullptr);
-	Point pt = { _current_text_dir == TD_RTL ? w->left : (w->left + w->width) - window_width, w->top + w->height };
-	return pt;
+	Point pt;
+	if (_settings_client.gui.vertical_toolbar && _game_mode != GM_EDITOR) {
+		// Retermine if the window was opened from the left or the right toolbar
+		pt.x = (_last_clicked_toolbar_idx == 0) ? w->left + w->width : _screen.width - w->width - window_width;
+		pt.y = w->top;
+	} else {
+		pt.x = _current_text_dir == TD_RTL ? w->left : (w->left + w->width) - window_width;
+		pt.y = w->top + w->height;
+	}	return pt;
 }
 
 /**
@@ -2293,6 +2311,12 @@ static EventState HandleWindowDragging()
 			EnsureVisibleCaption(w, nx, ny);
 
 			w->SetDirty();
+			if (GetWindowDraggedOffScreen(w)) {
+				GuiShowTooltips(w, STR_TOOLTIP_CLOSE_WINDOW, 0, NULL, TCC_NONE);
+			} else {
+				GuiShowTooltips(w, STR_NULL, 0, NULL, TCC_NONE); // Hide tooltip
+			}
+
 			return ES_HANDLED;
 		} else if (w->flags & WF_SIZING) {
 			/* Stop the sizing if the left mouse button was released */
@@ -2410,10 +2434,13 @@ static void HandleScrollbarScrolling(Window *w)
 	} else {
 		i = _cursor.pos.y - _cursorpos_drag_start.y;
 	}
+	if (_scrollbar_finger_drag) {
+		i = -i;
+	}
 
 	if (sb->disp_flags & ND_SCROLLBAR_BTN) {
 		if (_scroller_click_timeout == 1) {
-			_scroller_click_timeout = 3;
+			_scroller_click_timeout = SCROLLER_CLICK_DELAY;
 			sb->UpdatePosition(rtl == HasBit(sb->disp_flags, NDB_SCROLLBAR_UP) ? 1 : -1);
 			w->SetDirty();
 		}
@@ -2441,6 +2468,7 @@ static EventState HandleActiveWidget()
 			/* Abort if no button is clicked any more. */
 			if (!_left_button_down) {
 				w->mouse_capture_widget = -1;
+				_scrollbar_finger_drag = false;
 				w->SetDirty();
 				return ES_HANDLED;
 			}
@@ -2803,22 +2831,44 @@ static void HandleAutoscroll()
 	y -= vp->top;
 
 	/* here allows scrolling in both x and y axis */
-	static const int SCROLLSPEED = 3;
-	if (x - 15 < 0) {
-		w->viewport->dest_scrollpos_x += ScaleByZoom((x - 15) * SCROLLSPEED, vp->zoom);
-	} else if (15 - (vp->width - x) > 0) {
-		w->viewport->dest_scrollpos_x += ScaleByZoom((15 - (vp->width - x)) * SCROLLSPEED, vp->zoom);
+	static const int SCROLLSPEED = 15;
+	if (x - border < 0) {
+		_move_pressed = true;
+		w->viewport->dest_scrollpos_x += ScaleByZoom((x - border) * SCROLLSPEED, vp->zoom);
+	} else if (border - (vp->width - x) > 0) {
+		_move_pressed = true;
+		w->viewport->dest_scrollpos_x += ScaleByZoom((border - (vp->width - x)) * SCROLLSPEED, vp->zoom);
 	}
-	if (y - 15 < 0) {
-		w->viewport->dest_scrollpos_y += ScaleByZoom((y - 15) * SCROLLSPEED, vp->zoom);
-	} else if (15 - (vp->height - y) > 0) {
-		w->viewport->dest_scrollpos_y += ScaleByZoom((15 - (vp->height - y)) * SCROLLSPEED, vp->zoom);
+	if (y - border * 2 < 0) { // Border twice thicker, to accomodate top toolbar
+		_move_pressed = true;
+		w->viewport->dest_scrollpos_y += ScaleByZoom((y - border * 2) * SCROLLSPEED, vp->zoom);
+	} else if (border - (vp->height - y) > 0) {
+		_move_pressed = true;
+		w->viewport->dest_scrollpos_y += ScaleByZoom((border - (vp->height - y)) * SCROLLSPEED, vp->zoom);
+	}
+}
+
+/**
+ * Perform small continuous scrolling with right button press and drag.
+ */
+static void HandleContinuousScroll()
+{
+	static const float scrollspeed = 0.05f;
+	if (_scrolling_viewport && _right_button_down) {
+		Window *w = FindWindowFromPt(_right_button_down_pos.x, _right_button_down_pos.y);
+		if (w == NULL || w->flags & WF_DISABLE_VP_SCROLL) return;
+		ViewPort *vp = IsPtInWindowViewport(w, _right_button_down_pos.x, _right_button_down_pos.y);
+		if (vp == NULL) return;
+
+		w->viewport->dest_scrollpos_x += ScaleByZoom(scrollspeed * (_right_button_down_pos.x - _cursor.pos.x), vp->zoom);
+		w->viewport->dest_scrollpos_y += ScaleByZoom(scrollspeed * (_right_button_down_pos.y - _cursor.pos.y), vp->zoom);
 	}
 }
 
 enum MouseClick {
 	MC_NONE = 0,
 	MC_LEFT,
+	MC_LEFT_UP,
 	MC_RIGHT,
 	MC_DOUBLE_LEFT,
 	MC_HOVER,
@@ -2888,8 +2938,21 @@ static void MouseLoop(MouseClick click, int mousewheel)
 	 * But there is no company related window open anyway, so _current_company is not used. */
 	assert(HasModalProgress() || IsLocalCompany());
 
+	static bool mouse_down_on_viewport = false;
+	int x = _cursor.pos.x;
+	int y = _cursor.pos.y;
+	Window *w = FindWindowFromPt(x, y);
+	if (w == NULL) return;
+	ViewPort *vp = IsPtInWindowViewport(w, x, y);
+
+	/* Don't allow any action in a viewport if either in menu or when having a modal progress window */
+	if (vp != NULL && (_game_mode == GM_MENU || HasModalProgress())) return;
+
+	if (click == MC_LEFT) _left_button_down_pos = Point { x, y };
+
 	HandlePlacePresize();
 	UpdateTileSelection();
+	if (!mouse_down_on_viewport) HandleMouseDragNoTitlebars();
 
 	if (VpHandlePlaceSizingDrag()  == ES_HANDLED) return;
 	if (HandleMouseDragDrop()      == ES_HANDLED) return;
@@ -2959,9 +3022,14 @@ static void MouseLoop(MouseClick click, int mousewheel)
 
 	if (vp == nullptr || (w->flags & WF_DISABLE_VP_SCROLL)) {
 		switch (click) {
+			case MC_LEFT_UP:
+				DispatchLeftButtonUpEvent(w, x - w->left, y - w->top);
+				mouse_down_on_viewport = false;
+				break;
+
 			case MC_LEFT:
 			case MC_DOUBLE_LEFT:
-				DispatchLeftClickEvent(w, x - w->left, y - w->top, click == MC_DOUBLE_LEFT ? 2 : 1);
+				DispatchLeftButtonDownEvent(w, x - w->left, y - w->top, click == MC_DOUBLE_LEFT ? 2 : 1);
 				return;
 
 			default:
@@ -2998,6 +3066,7 @@ void HandleMouseEvents()
 
 	static int double_click_time = 0;
 	static Point double_click_pos = {0, 0};
+	static bool left_button_released = false;
 
 	/* Mouse event? */
 	MouseClick click = MC_NONE;
@@ -3011,10 +3080,21 @@ void HandleMouseEvents()
 		double_click_time = _realtime_tick;
 		double_click_pos = _cursor.pos;
 		_left_button_clicked = true;
+		left_button_released = false;
 		_input_events_this_tick++;
 	} else if (_right_button_clicked) {
 		_right_button_clicked = false;
 		click = MC_RIGHT;
+		_input_events_this_tick++;
+#if defined(__ANDROID__) || 1
+		// Two-finger touch on Android - cancel whatever action we were doing
+		ResetObjectToPlace();
+		ToolbarSelectLastTool();
+#endif
+	} else if(!_left_button_down && !left_button_released) {
+		click = MC_LEFT_UP;
+		left_button_released = true;
+		_left_button_clicked = false;
 		_input_events_this_tick++;
 	}
 
@@ -3129,6 +3209,8 @@ void InputLoop()
 
 	/* HandleMouseEvents was already called for this tick */
 	HandleMouseEvents();
+	HandleAutoscroll();
+	HandleContinuousScroll();
 }
 
 /**
@@ -3395,6 +3477,7 @@ restart_search:
 		if (w->window_class != WC_MAIN_WINDOW &&
 				w->window_class != WC_SELECT_GAME &&
 				w->window_class != WC_MAIN_TOOLBAR &&
+				w->window_class != WC_MAIN_TOOLBAR_RIGHT &&
 				w->window_class != WC_STATUS_BAR &&
 				w->window_class != WC_TOOLTIPS &&
 				(w->flags & WF_STICKY) == 0) { // do not delete windows which are 'pinned'
@@ -3464,10 +3547,33 @@ restart_search:
 	FOR_ALL_WINDOWS_FROM_BACK(w) w->SetDirty();
 }
 
+/**
+ * Delete all windows that are linked to the main toolbar.
+ * Once done with that, refresh other windows too.
+ */
+void DeleteToolbarLinkedWindows()
+{
+	Window *w;
+
+restart_search:
+	/* When we find the window to delete, we need to restart the search
+	 * as deleting this window could cascade in deleting (many) others
+	 * anywhere in the z-array */
+	FOR_ALL_WINDOWS_FROM_BACK(w) {
+		if (w->window_desc->default_pos == WDP_ALIGN_TOOLBAR) {
+			delete w;
+			goto restart_search;
+		}
+	}
+
+	FOR_ALL_WINDOWS_FROM_BACK(w) w->SetDirty();
+}
+
 /** Delete all always on-top windows to get an empty screen */
 void HideVitalWindows()
 {
 	DeleteWindowById(WC_MAIN_TOOLBAR, 0);
+	DeleteWindowById(WC_MAIN_TOOLBAR_RIGHT, 0);
 	DeleteWindowById(WC_STATUS_BAR, 0);
 }
 
@@ -3525,6 +3631,7 @@ static int PositionWindow(Window *w, WindowClass clss, int setting)
  */
 int PositionMainToolbar(Window *w)
 {
+	if (_settings_client.gui.vertical_toolbar && _game_mode != GM_EDITOR) return 0; /* Always at the left */
 	DEBUG(misc, 5, "Repositioning Main Toolbar...");
 	return PositionWindow(w, WC_MAIN_TOOLBAR, _settings_client.gui.toolbar_pos);
 }
@@ -3607,13 +3714,20 @@ void RelocateAllWindows(int neww, int newh)
 				left = PositionMainToolbar(w); // changes toolbar orientation
 				break;
 
+			case WC_MAIN_TOOLBAR_RIGHT:
+				ResizeWindow(w, min(neww, _toolbar_width) - w->width, 0, false);
+
+				top = w->top;
+				left = neww - w->width;
+				break;
+
 			case WC_NEWS_WINDOW:
 				top = newh - w->height;
 				left = PositionNewsMessage(w);
 				break;
 
 			case WC_STATUS_BAR:
-				ResizeWindow(w, min(neww, _toolbar_width) - w->width, 0, false);
+				ResizeWindow(w, min(neww, min(_toolbar_width, _screen.width - SETTING_BUTTON_HEIGHT * 2)) - w->width, 0, false);
 
 				top = newh - w->height;
 				left = PositionStatusbar(w);
@@ -3649,6 +3763,65 @@ void RelocateAllWindows(int neww, int newh)
 
 		EnsureVisibleCaption(w, left, top);
 	}
+}
+
+static void MoveAllWindowsOffScreen(bool moveOffScreen)
+{
+	Window *w;
+	bool updateScreen = false;
+
+	FOR_ALL_WINDOWS_FROM_BACK(w) {
+		switch (w->window_class) {
+			case WC_MAIN_WINDOW:
+			case WC_BUILD_CONFIRMATION:
+			case WC_BOOTSTRAP:
+			case WC_MAIN_TOOLBAR:
+			case WC_MAIN_TOOLBAR_RIGHT:
+			case WC_NEWS_WINDOW:
+			case WC_STATUS_BAR:
+			case WC_SEND_NETWORK_MSG:
+			case WC_CONSOLE:
+				continue;
+
+			default:
+				if (moveOffScreen) {
+					if (w->left < _screen.width) {
+						w->left += _screen.width;
+						if (w->viewport != NULL) {
+							w->viewport->left += _screen.width;
+						}
+						//w->SetDirty();
+						updateScreen = true;
+					}
+				} else {
+					if (w->left >= _screen.width) {
+						w->left -= _screen.width;
+						if (w->viewport != NULL) {
+							w->viewport->left -= _screen.width;
+						}
+						w->SetDirty();
+						//updateScreen = true;
+					}
+				}
+				break;
+		}
+	}
+	if (updateScreen) {
+		w = FindWindowById(WC_MAIN_WINDOW, 0);
+		if (w) {
+			w->SetDirty();
+		}
+	}
+}
+
+void MoveAllWindowsOffScreen()
+{
+	MoveAllWindowsOffScreen(true);
+}
+
+void MoveAllHiddenWindowsBackToScreen()
+{
+	MoveAllWindowsOffScreen(false);
 }
 
 /**

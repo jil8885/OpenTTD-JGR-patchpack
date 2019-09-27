@@ -1,0 +1,26 @@
+--- src/widgets/dropdown.cpp
++++ src/widgets/dropdown.cpp
+@@ -143,14 +146,22 @@ struct DropdownWindow : Window {
+ 
+ 		/* Total length of list */
+ 		int list_height = 0;
++		int scroll_pos = 0;
++		int count = 0;
+ 		for (const DropDownListItem * const *it = list->Begin(); it != list->End(); ++it) {
+ 			const DropDownListItem *item = *it;
+ 			list_height += item->Height(items_width);
++			if (item->result == selected) scroll_pos = count;
++			count++;
+ 		}
+-
+ 		/* Capacity is the average number of items visible */
+ 		this->vscroll->SetCapacity(size.height * (uint16)list->Length() / list_height);
+ 		this->vscroll->SetCount((uint16)list->Length());
++		if (this->vscroll->GetCount() <= this->vscroll->GetCapacity()) {
++			scroll_pos = 0;
++		}
++		this->vscroll->SetPosition(scroll_pos);
++		this->vscroll->UpdatePosition(0);
+ 
+ 		this->parent_wnd_class = parent->window_class;
+ 		this->parent_wnd_num   = parent->window_number;

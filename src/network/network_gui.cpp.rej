@@ -1,0 +1,58 @@
+--- src/network/network_gui.cpp
++++ src/network/network_gui.cpp
+@@ -1788,6 +1786,7 @@ struct NetworkClientListPopupWindow : Window {
+ 			d = maxdim(GetStringBoundingBox(action->name), d);
+ 		}
+ 
++		d.height = GetMinSizing(NWST_STEP, FONT_HEIGHT_NORMAL);
+ 		d.height *= this->actions.Length();
+ 		d.width += WD_FRAMERECT_LEFT + WD_FRAMERECT_RIGHT;
+ 		d.height += WD_FRAMERECT_TOP + WD_FRAMERECT_BOTTOM;
+@@ -1799,37 +1798,29 @@ struct NetworkClientListPopupWindow : Window {
+ 		/* Draw the actions */
+ 		int sel = this->sel_index;
+ 		int y = r.top + WD_FRAMERECT_TOP;
+-		for (const ClientListAction *action = this->actions.Begin(); action != this->actions.End(); action++, y += FONT_HEIGHT_NORMAL) {
++		for (const ClientListAction *action = this->actions.Begin(); action != this->actions.End(); action++, y += GetMinSizing(NWST_STEP, FONT_HEIGHT_NORMAL)) {
+ 			TextColour colour;
+ 			if (sel-- == 0) { // Selected item, highlight it
+-				GfxFillRect(r.left + 1, y, r.right - 1, y + FONT_HEIGHT_NORMAL - 1, PC_BLACK);
++				GfxFillRect(r.left + 1, y, r.right - 1, y + GetMinSizing(NWST_STEP, FONT_HEIGHT_NORMAL) - 1, PC_BLACK);
+ 				colour = TC_WHITE;
+ 			} else {
+ 				colour = TC_BLACK;
+ 			}
+ 
+-			DrawString(r.left + WD_FRAMERECT_LEFT, r.right - WD_FRAMERECT_RIGHT, y, action->name, colour);
++			DrawString(r.left + WD_FRAMERECT_LEFT, r.right - WD_FRAMERECT_RIGHT, Center(y, GetMinSizing(NWST_STEP, FONT_HEIGHT_NORMAL)), action->name, colour);
+ 		}
+ 	}
+ 
+-	virtual void OnMouseLoop()
++	virtual void OnClick(Point pt, int widget, int click_count)
+ 	{
+-		/* We selected an action */
+-		uint index = (_cursor.pos.y - this->top - WD_FRAMERECT_TOP) / FONT_HEIGHT_NORMAL;
+-
+-		if (_left_button_down) {
+-			if (index == this->sel_index || index >= this->actions.Length()) return;
+-
+-			this->sel_index = index;
+-			this->SetDirty();
+-		} else {
+-			if (index < this->actions.Length() && _cursor.pos.y >= this->top) {
+-				const NetworkClientInfo *ci = NetworkClientInfo::GetByClientID(this->client_id);
+-				if (ci != NULL) this->actions[index].proc(ci);
+-			}
++		int index = (pt.y - WD_FRAMERECT_TOP) / GetMinSizing(NWST_STEP, FONT_HEIGHT_NORMAL);
+ 
+-			DeleteWindowByClass(WC_CLIENT_LIST_POPUP);
++		if (index >= 0 && index < (int)this->actions.Length()) {
++			const NetworkClientInfo *ci = NetworkClientInfo::GetByClientID(this->client_id);
++			if (ci != NULL) this->actions[index].proc(ci);
+ 		}
++
++		DeleteWindowByClass(WC_CLIENT_LIST_POPUP);
+ 	}
+ };
+ 

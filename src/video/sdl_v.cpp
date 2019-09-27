@@ -60,6 +60,9 @@ static int _num_dirty_rects;
 static int _use_hwpalette;
 static int _requested_hwpalette; /* Did we request a HWPALETTE for the current video mode? */
 
+static SDL_Joystick * _multitouch_device = NULL;
+static Point _multitouch_second_point;
+
 void VideoDriver_SDL::MakeDirty(int left, int top, int width, int height)
 {
 	if (_num_dirty_rects < MAX_DIRTY_RECTS) {
@@ -419,6 +422,14 @@ bool VideoDriver_SDL::CreateMainSurface(uint w, uint h)
 	SDL_ANDROID_SetSystemMousePointerVisible(0); // We have our own cursor, only works on Android N
 #endif
 
+#ifdef __ANDROID__
+	if (!_multitouch_device) {
+		SDL_InitSubSystem(SDL_INIT_JOYSTICK);
+		_multitouch_device = SDL_JoystickOpen(0);
+	}
+	SDL_ANDROID_SetSystemMousePointerVisible(0); // We have our own cursor, only works on Android N
+#endif
+
 	return true;
 }
 
@@ -560,10 +571,25 @@ int VideoDriver_SDL::PollEvent()
 				case SDL_BUTTON_RIGHT:
 					_right_button_down = true;
 					_right_button_clicked = true;
+					_right_button_down_pos.x = ev.motion.x;
+					_right_button_down_pos.y = ev.motion.y;
 					break;
 
+#ifdef __ANDROID__
+				case SDL_BUTTON_WHEELUP:
+				case SDL_BUTTON_WHEELDOWN:
+					_cursor.wheel += (ev.button.button == SDL_BUTTON_WHEELDOWN) ? 1 : -1;
+					_right_button_down = false;
+					// Center the mouse cursor between touch points
+					SDL_GetMouseState(&_cursor.pos.x, &_cursor.pos.y);
+					_cursor.pos.x = (_cursor.pos.x + _multitouch_second_point.x) / 2;
+					_cursor.pos.y = (_cursor.pos.y + _multitouch_second_point.y) / 2;
+					//_cursor.UpdateCursorPosition(_cursor.pos.x, _cursor.pos.y, false);
+					break;
+#else
 				case SDL_BUTTON_WHEELUP:   _cursor.wheel--; break;
 				case SDL_BUTTON_WHEELDOWN: _cursor.wheel++; break;
+#endif
 
 				default: break;
 			}
@@ -801,7 +827,9 @@ void VideoDriver_SDL::MainLoop()
 			 * except sleeping can't. */
 			if (_draw_mutex != nullptr) draw_lock.unlock();
 
-			GameLoop();
+			for (int i = (_fast_forward ? 5 : 1); i > 0; i--) {
+				GameLoop();
+			}
 
 			if (_draw_mutex != nullptr) draw_lock.lock();
 

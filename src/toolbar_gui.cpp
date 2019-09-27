@@ -68,6 +68,7 @@ RailType _last_built_railtype;
 RoadType _last_built_roadtype;
 
 static ScreenshotType _confirmed_screenshot_type; ///< Screenshot type the current query is about to confirm.
+int _last_clicked_toolbar_idx = 0;
 
 /** Toobar modes */
 enum ToolbarMode {
@@ -108,9 +109,9 @@ public:
 	{
 		bool rtl = _current_text_dir == TD_RTL;
 		if (this->checked) {
-			DrawString(left + WD_FRAMERECT_LEFT, right - WD_FRAMERECT_RIGHT, top, STR_JUST_CHECKMARK, sel ? TC_WHITE : TC_BLACK);
+			DrawString(left + WD_FRAMERECT_LEFT, right - WD_FRAMERECT_RIGHT, Center(top, bottom - top), STR_JUST_CHECKMARK, sel ? TC_WHITE : TC_BLACK);
 		}
-		DrawString(left + WD_FRAMERECT_LEFT + (rtl ? 0 : this->checkmark_width), right - WD_FRAMERECT_RIGHT - (rtl ? this->checkmark_width : 0), top, this->String(), sel ? TC_WHITE : TC_BLACK);
+		DrawString(left + WD_FRAMERECT_LEFT + (rtl ? 0 : this->checkmark_width), right - WD_FRAMERECT_RIGHT - (rtl ? this->checkmark_width : 0), Center(top, bottom - top), this->String(), sel ? TC_WHITE : TC_BLACK);
 	}
 };
 
@@ -144,7 +145,7 @@ public:
 
 	uint Height(uint width) const override
 	{
-		return max(max(this->icon_size.height, this->lock_size.height) + 2U, (uint)FONT_HEIGHT_NORMAL);
+		return GetMinSizing(NWST_STEP, max(max(this->icon_size.height, this->lock_size.height) + 2U, (uint)FONT_HEIGHT_NORMAL));
 	}
 
 	void Draw(int left, int right, int top, int bottom, bool sel, Colours bg_colour) const override
@@ -215,6 +216,7 @@ static const int CTMN_CLIENT_LIST = -1; ///< Show the client list
 static const int CTMN_NEW_COMPANY = -2; ///< Create a new company
 static const int CTMN_SPECTATE    = -3; ///< Become spectator
 static const int CTMN_SPECTATOR   = -4; ///< Show a company window as spectator
+static const int CTMN_SPEAK_ALL   = -5; ///< Send message to public chat
 
 /**
  * Pop up a generic company list menu.
@@ -520,7 +522,7 @@ static CallBackFunction MenuClickMap(int index)
 
 static CallBackFunction ToolbarTownClick(Window *w)
 {
-	PopupMainToolbMenu(w, WID_TN_TOWNS, STR_TOWN_MENU_TOWN_DIRECTORY, (_settings_game.economy.found_town == TF_FORBIDDEN) ? 1 : 2);
+	PopupMainToolbMenu(w, WID_TN_TOWNS, STR_TOWN_MENU_TOWN_DIRECTORY, (_settings_game.economy.found_town == TF_FORBIDDEN) ? 5 : 6);
 	return CBF_NONE;
 }
 
@@ -534,7 +536,11 @@ static CallBackFunction MenuClickTown(int index)
 {
 	switch (index) {
 		case 0: ShowTownDirectory(); break;
-		case 1: // setting could be changed when the dropdown was open
+		case 1: ShowSubsidiesList(); break;
+		case 2: ShowIndustryDirectory(); break;
+		case 3: ShowIndustryCargoesWindow(); break;
+		case 4: if (_local_company != COMPANY_SPECTATOR) ShowBuildIndustryWindow(); break;
+		case 5: // setting could be changed when the dropdown was open
 			if (_settings_game.economy.found_town != TF_FORBIDDEN) ShowFoundTownWindow();
 			break;
 	}
@@ -641,6 +647,10 @@ static CallBackFunction MenuClickCompany(int index)
 					NetworkClientRequestMove(COMPANY_SPECTATOR);
 				}
 				return CBF_NONE;
+
+			case CTMN_SPEAK_ALL:
+				ShowNetworkChatQueryWindow(DESTTYPE_BROADCAST, 0);
+				return CBF_NONE;
 		}
 	}
 	ShowCompany((CompanyID)index);
@@ -691,7 +701,8 @@ static CallBackFunction MenuClickGoal(int index)
 
 static CallBackFunction ToolbarGraphsClick(Window *w)
 {
-	PopupMainToolbMenu(w, WID_TN_GRAPHS, STR_GRAPH_MENU_OPERATING_PROFIT_GRAPH, (_toolbar_mode == TB_NORMAL) ? 6 : 8);
+	PopupMainToolbMenu(w, WID_TN_GRAPHS, STR_GRAPH_MENU_OPERATING_PROFIT_GRAPH,
+		(_toolbar_mode == TB_NORMAL && !_settings_client.gui.compact_vertical_toolbar) ? 6 : (_networking ? 8 : 9));
 	return CBF_NONE;
 }
 
@@ -713,6 +724,7 @@ static CallBackFunction MenuClickGraphs(int index)
 		/* functions for combined graphs/league button */
 		case 6: ShowCompanyLeagueTable();      break;
 		case 7: ShowPerformanceRatingDetail(); break;
+		case 8: ShowHighscoreTable(); break;
 	}
 	return CBF_NONE;
 }
@@ -884,10 +896,22 @@ static CallBackFunction ToolbarZoomOutClick(Window *w)
 
 static CallBackFunction ToolbarBuildRailClick(Window *w)
 {
-	ShowDropDownList(w, GetRailTypeDropDownList(), _last_built_railtype, WID_TN_RAILS, 140, true, true);
+	DropDownList *list = GetRailTypeDropDownList();
+	if (_settings_client.gui.compact_vertical_toolbar) {
+		const Company *c = Company::Get(_local_company);
+		*list->Append() = new DropDownListStringItem(STR_ROAD_MENU_ROAD_CONSTRUCTION, RAILTYPE_END + ROADTYPE_ROAD, false);
+		*list->Append() = new DropDownListStringItem(STR_ROAD_MENU_TRAM_CONSTRUCTION, RAILTYPE_END + ROADTYPE_TRAM, !HasBit(c->avail_roadtypes, ROADTYPE_TRAM));
+		*list->Append() = new DropDownListStringItem(STR_WATERWAYS_MENU_WATERWAYS_CONSTRUCTION, RAILTYPE_END + WID_TN_WATER, false);
+		*list->Append() = new DropDownListStringItem(STR_AIRCRAFT_MENU_AIRPORT_CONSTRUCTION, RAILTYPE_END + WID_TN_AIR, false);
+	}
+	ShowDropDownList(w, list, _last_built_railtype, WID_TN_RAILS, 140, true);
 	if (_settings_client.sound.click_beep) SndPlayFx(SND_15_BEEP);
 	return CBF_NONE;
 }
+
+static CallBackFunction MenuClickBuildRoad(int index);
+static CallBackFunction MenuClickBuildWater(int index);
+static CallBackFunction MenuClickBuildAir(int index);
 
 /**
  * Handle click on the entry in the Build Rail menu.
@@ -897,6 +921,16 @@ static CallBackFunction ToolbarBuildRailClick(Window *w)
  */
 static CallBackFunction MenuClickBuildRail(int index)
 {
+	switch (index) {
+		case RAILTYPE_END + ROADTYPE_ROAD:
+			return MenuClickBuildRoad(ROADTYPE_ROAD);
+		case RAILTYPE_END + ROADTYPE_TRAM:
+			return MenuClickBuildRoad(ROADTYPE_TRAM);
+		case RAILTYPE_END + WID_TN_WATER:
+			return MenuClickBuildWater(0);
+		case RAILTYPE_END + WID_TN_AIR:
+			return MenuClickBuildAir(0);
+	}
 	_last_built_railtype = (RailType)index;
 	ShowBuildRailToolbar(_last_built_railtype);
 	return CBF_NONE;
@@ -1166,17 +1200,21 @@ static CallBackFunction MenuClickHelp(int index)
 {
 	switch (index) {
 		case  0: return PlaceLandBlockInfo();
-		case  2: IConsoleSwitch();                 break;
-		case  3: ShowAIDebugWindow();              break;
-		case  4: MenuClickSmallScreenshot();       break;
-		case  5: MenuClickLargeWorldScreenshot(SC_ZOOMEDIN);    break;
-		case  6: MenuClickLargeWorldScreenshot(SC_DEFAULTZOOM); break;
-		case  7: MenuClickLargeWorldScreenshot(SC_WORLD);       break;
-		case  8: ShowFramerateWindow();            break;
-		case  9: ShowAboutWindow();                break;
-		case 10: ShowSpriteAlignerWindow();        break;
-		case 11: ToggleBoundingBoxes();            break;
-		case 12: ToggleDirtyBlocks();              break;
+		case  1: ShowLastNewsMessage();            break;
+		case  2: ShowMessageHistory();             break;
+		case  3: ShowMusicWindow();                break;
+		case  4: ShowTutorialWindow();             break;
+		case  5: IConsoleSwitch();                 break;
+		case  6: ShowAIDebugWindow();              break;
+		case  7: MenuClickSmallScreenshot();       break;
+		case  8: MenuClickLargeWorldScreenshot(SC_ZOOMEDIN);    break;
+		case  9: MenuClickLargeWorldScreenshot(SC_DEFAULTZOOM); break;
+		case 10: MenuClickLargeWorldScreenshot(SC_WORLD);       break;
+		case 11: ShowFramerateWindow();            break;
+		case 12: ShowAboutWindow();                break;
+		case 13: ShowSpriteAlignerWindow();        break;
+		case 14: ToggleBoundingBoxes();            break;
+		case 15: ToggleDirtyBlocks();              break;
 	}
 	return CBF_NONE;
 }
@@ -1193,6 +1231,40 @@ static CallBackFunction ToolbarSwitchClick(Window *w)
 
 	w->ReInit();
 	w->SetWidgetLoweredState(_game_mode == GM_EDITOR ? (uint)WID_TE_SWITCH_BAR : (uint)WID_TN_SWITCH_BAR, _toolbar_mode == TB_LOWER);
+	if (_settings_client.sound.click_beep) SndPlayFx(SND_15_BEEP);
+	return CBF_NONE;
+}
+
+static CallBackFunction ToolbarCtrlClick(Window *w)
+{
+	_ctrl_pressed = !_ctrl_pressed;
+	//DEBUG(misc, 1, "ToolbarCtrlClick: pressed %d", _ctrl_pressed);
+	w->SetWidgetLoweredState(WID_TN_CTRL, _ctrl_pressed);
+	w->SetWidgetDirty(WID_TN_CTRL);
+	HandleCtrlChanged();
+	if (_settings_client.sound.click_beep) SndPlayFx(SND_15_BEEP);
+	return CBF_NONE;
+}
+
+static CallBackFunction ToolbarShiftClick(Window *w)
+{
+	_shift_pressed = !_shift_pressed;
+	//DEBUG(misc, 1, "ToolbarShiftClick: pressed %d", _shift_pressed);
+	w->SetWidgetLoweredState(WID_TN_SHIFT, _shift_pressed);
+	w->SetWidgetDirty(WID_TN_SHIFT);
+	if (_settings_client.sound.click_beep) SndPlayFx(SND_15_BEEP);
+	return CBF_NONE;
+}
+
+static CallBackFunction ToolbarDeleteClick(Window *w)
+{
+	DeleteNonVitalWindows();
+	_ctrl_pressed = false;
+	w->SetWidgetLoweredState(WID_TN_CTRL, _ctrl_pressed);
+	w->SetWidgetDirty(WID_TN_CTRL);
+	_shift_pressed = false;
+	w->SetWidgetLoweredState(WID_TN_SHIFT, _shift_pressed);
+	w->SetWidgetDirty(WID_TN_SHIFT);
 	if (_settings_client.sound.click_beep) SndPlayFx(SND_15_BEEP);
 	return CBF_NONE;
 }
@@ -1339,7 +1411,7 @@ protected:
 	uint spacers;          ///< Number of spacer widgets in this toolbar
 
 public:
-	NWidgetToolbarContainer() : NWidgetContainer(NWID_HORIZONTAL)
+	NWidgetToolbarContainer(WidgetType widgetType = NWID_HORIZONTAL) : NWidgetContainer(widgetType)
 	{
 	}
 
@@ -1414,6 +1486,10 @@ public:
 		uint position = 0; // Place to put next child relative to origin of the container.
 		uint spacer_space = max(0, (int)given_width - (int)(button_count * this->smallest_x)); // Remaining spacing for 'spacer' widgets
 		uint button_space = given_width - spacer_space; // Remaining spacing for the buttons
+		if (type == NWID_VERTICAL) {
+			spacer_space = max(0, (int)given_height - (int)(button_count * this->smallest_y));
+			button_space = given_height - spacer_space;
+		}
 		uint spacer_i = 0;
 		uint button_i = 0;
 
@@ -1434,12 +1510,22 @@ public:
 
 			/* Buttons can be scaled, the others not. */
 			if (this->IsButton(child_wid->type)) {
-				child_wid->current_x = button_space / (button_count - button_i);
-				button_space -= child_wid->current_x;
+				if (type == NWID_HORIZONTAL) {
+					child_wid->current_x = button_space / (button_count - button_i);
+					button_space -= child_wid->current_x;
+				} else {
+					child_wid->current_y = button_space / (button_count - button_i);
+					button_space -= child_wid->current_y;
+				}
 				button_i++;
 			}
-			child_wid->AssignSizePosition(sizing, x + position, y, child_wid->current_x, this->current_y, rtl);
-			position += child_wid->current_x;
+			if (type == NWID_HORIZONTAL) {
+				child_wid->AssignSizePosition(sizing, x + position, y, child_wid->current_x, this->current_y, rtl);
+				position += child_wid->current_x;
+			} else {
+				child_wid->AssignSizePosition(sizing, x, y + position, this->current_x, child_wid->current_y, rtl);
+				position += child_wid->current_y;
+			}
 
 			if (rtl) {
 				cur_wid--;
@@ -1493,8 +1579,8 @@ public:
 class NWidgetMainToolbarContainer : public NWidgetToolbarContainer {
 	const byte *GetButtonArrangement(uint &width, uint &arrangable_count, uint &button_count, uint &spacer_count) const override
 	{
-		static const uint SMALLEST_ARRANGEMENT = 14;
-		static const uint BIGGEST_ARRANGEMENT  = 20;
+		uint SMALLEST_ARRANGEMENT = 14 + (_settings_client.gui.build_confirmation ? 1 : 2);
+		uint BIGGEST_ARRANGEMENT  = 20 + (_settings_client.gui.build_confirmation ? 1 : 2);
 
 		/* The number of buttons of each row of the toolbar should match the number of items which we want to be visible.
 		 * The total number of buttons should be equal to arrangable_count * 2.
@@ -1516,6 +1602,7 @@ class NWidgetMainToolbarContainer : public NWidgetToolbarContainer {
 			WID_TN_WATER,
 			WID_TN_AIR,
 			WID_TN_LANDSCAPE,
+			WID_TN_CTRL,
 			WID_TN_SWITCH_BAR,
 			// lower toolbar
 			WID_TN_SETTINGS,
@@ -1531,6 +1618,7 @@ class NWidgetMainToolbarContainer : public NWidgetToolbarContainer {
 			WID_TN_MUSIC_SOUND,
 			WID_TN_MESSAGES,
 			WID_TN_HELP,
+			WID_TN_CTRL,
 			WID_TN_SWITCH_BAR,
 		};
 		static const byte arrange15[] = {
@@ -1548,6 +1636,7 @@ class NWidgetMainToolbarContainer : public NWidgetToolbarContainer {
 			WID_TN_LANDSCAPE,
 			WID_TN_ZOOM_IN,
 			WID_TN_ZOOM_OUT,
+			WID_TN_CTRL,
 			WID_TN_SWITCH_BAR,
 			// lower toolbar
 			WID_TN_PAUSE,
@@ -1564,6 +1653,7 @@ class NWidgetMainToolbarContainer : public NWidgetToolbarContainer {
 			WID_TN_MUSIC_SOUND,
 			WID_TN_MESSAGES,
 			WID_TN_HELP,
+			WID_TN_CTRL,
 			WID_TN_SWITCH_BAR,
 		};
 		static const byte arrange16[] = {
@@ -1582,6 +1672,7 @@ class NWidgetMainToolbarContainer : public NWidgetToolbarContainer {
 			WID_TN_LANDSCAPE,
 			WID_TN_ZOOM_IN,
 			WID_TN_ZOOM_OUT,
+			WID_TN_CTRL,
 			WID_TN_SWITCH_BAR,
 			// lower toolbar
 			WID_TN_PAUSE,
@@ -1599,6 +1690,7 @@ class NWidgetMainToolbarContainer : public NWidgetToolbarContainer {
 			WID_TN_HELP,
 			WID_TN_ZOOM_IN,
 			WID_TN_ZOOM_OUT,
+			WID_TN_CTRL,
 			WID_TN_SWITCH_BAR,
 		};
 		static const byte arrange17[] = {
@@ -1618,6 +1710,7 @@ class NWidgetMainToolbarContainer : public NWidgetToolbarContainer {
 			WID_TN_LANDSCAPE,
 			WID_TN_ZOOM_IN,
 			WID_TN_ZOOM_OUT,
+			WID_TN_CTRL,
 			WID_TN_SWITCH_BAR,
 			// lower toolbar
 			WID_TN_PAUSE,
@@ -1636,6 +1729,7 @@ class NWidgetMainToolbarContainer : public NWidgetToolbarContainer {
 			WID_TN_HELP,
 			WID_TN_ZOOM_IN,
 			WID_TN_ZOOM_OUT,
+			WID_TN_CTRL,
 			WID_TN_SWITCH_BAR,
 		};
 		static const byte arrange18[] = {
@@ -1656,6 +1750,7 @@ class NWidgetMainToolbarContainer : public NWidgetToolbarContainer {
 			WID_TN_LANDSCAPE,
 			WID_TN_ZOOM_IN,
 			WID_TN_ZOOM_OUT,
+			WID_TN_CTRL,
 			WID_TN_SWITCH_BAR,
 			// lower toolbar
 			WID_TN_PAUSE,
@@ -1675,6 +1770,7 @@ class NWidgetMainToolbarContainer : public NWidgetToolbarContainer {
 			WID_TN_HELP,
 			WID_TN_ZOOM_IN,
 			WID_TN_ZOOM_OUT,
+			WID_TN_CTRL,
 			WID_TN_SWITCH_BAR,
 		};
 		static const byte arrange19[] = {
@@ -1696,6 +1792,7 @@ class NWidgetMainToolbarContainer : public NWidgetToolbarContainer {
 			WID_TN_MUSIC_SOUND,
 			WID_TN_ZOOM_IN,
 			WID_TN_ZOOM_OUT,
+			WID_TN_CTRL,
 			WID_TN_SWITCH_BAR,
 			// lower toolbar
 			WID_TN_PAUSE,
@@ -1716,6 +1813,7 @@ class NWidgetMainToolbarContainer : public NWidgetToolbarContainer {
 			WID_TN_HELP,
 			WID_TN_ZOOM_IN,
 			WID_TN_ZOOM_OUT,
+			WID_TN_CTRL,
 			WID_TN_SWITCH_BAR,
 		};
 		static const byte arrange20[] = {
@@ -1738,6 +1836,7 @@ class NWidgetMainToolbarContainer : public NWidgetToolbarContainer {
 			WID_TN_GOAL,
 			WID_TN_ZOOM_IN,
 			WID_TN_ZOOM_OUT,
+			WID_TN_CTRL,
 			WID_TN_SWITCH_BAR,
 			// lower toolbar
 			WID_TN_PAUSE,
@@ -1759,6 +1858,7 @@ class NWidgetMainToolbarContainer : public NWidgetToolbarContainer {
 			WID_TN_HELP,
 			WID_TN_ZOOM_IN,
 			WID_TN_ZOOM_OUT,
+			WID_TN_CTRL,
 			WID_TN_SWITCH_BAR,
 		};
 		static const byte arrange_all[] = {
@@ -1959,6 +2059,9 @@ static ToolbarButtonProc * const _toolbar_button_procs[] = {
 	ToolbarNewspaperClick,
 	ToolbarHelpClick,
 	ToolbarSwitchClick,
+	ToolbarCtrlClick,
+	ToolbarShiftClick,
+	ToolbarDeleteClick,
 };
 
 enum MainToolbarHotkeys {
@@ -2006,8 +2109,10 @@ enum MainToolbarHotkeys {
 /** Main toolbar. */
 struct MainToolbarWindow : Window {
 	GUITimer timer;
+	int *clickedFlag;
+	int clickedValue;
 
-	MainToolbarWindow(WindowDesc *desc) : Window(desc)
+	MainToolbarWindow(WindowDesc *desc, int *clickedFlag = NULL, int clickedValue = 0) : Window(desc), clickedFlag(clickedFlag), clickedValue(clickedValue)
 	{
 		this->InitNested(0);
 
@@ -2114,7 +2219,7 @@ struct MainToolbarWindow : Window {
 				ShowLandInfo(tile);
 				break;
 
-			default: NOT_REACHED();
+			default: return; //NOT_REACHED();
 		}
 	}
 
@@ -2214,44 +2319,44 @@ static Hotkey maintoolbar_hotkeys[] = {
 };
 HotkeyList MainToolbarWindow::hotkeys("maintoolbar", maintoolbar_hotkeys);
 
+/** Sprites to use for the different toolbar buttons */
+static const SpriteID _toolbar_button_sprites[] = {
+	SPR_IMG_PAUSE,           // WID_TN_PAUSE
+	SPR_IMG_FASTFORWARD,     // WID_TN_FAST_FORWARD
+	SPR_IMG_SETTINGS,        // WID_TN_SETTINGS
+	SPR_IMG_SAVE,            // WID_TN_SAVE
+	SPR_IMG_SMALLMAP,        // WID_TN_SMALL_MAP
+	SPR_IMG_TOWN,            // WID_TN_TOWNS
+	SPR_IMG_SUBSIDIES,       // WID_TN_SUBSIDIES
+	SPR_IMG_COMPANY_LIST,    // WID_TN_STATIONS
+	SPR_IMG_COMPANY_FINANCE, // WID_TN_FINANCES
+	SPR_IMG_COMPANY_GENERAL, // WID_TN_COMPANIES
+	SPR_IMG_STORY_BOOK,      // WID_TN_STORY
+	SPR_IMG_GOAL,            // WID_TN_GOAL
+	SPR_IMG_GRAPHS,          // WID_TN_GRAPHS
+	SPR_IMG_COMPANY_LEAGUE,  // WID_TN_LEAGUE
+	SPR_IMG_INDUSTRY,        // WID_TN_INDUSTRIES
+	SPR_IMG_TRAINLIST,       // WID_TN_TRAINS
+	SPR_IMG_TRUCKLIST,       // WID_TN_ROADVEHS
+	SPR_IMG_SHIPLIST,        // WID_TN_SHIPS
+	SPR_IMG_AIRPLANESLIST,   // WID_TN_AIRCRAFT
+	SPR_IMG_ZOOMIN,          // WID_TN_ZOOMIN
+	SPR_IMG_ZOOMOUT,         // WID_TN_ZOOMOUT
+	SPR_IMG_BUILDRAIL,       // WID_TN_RAILS
+	SPR_IMG_BUILDROAD,       // WID_TN_ROADS
+	SPR_IMG_BUILDWATER,      // WID_TN_WATER
+	SPR_IMG_BUILDAIR,        // WID_TN_AIR
+	SPR_IMG_LANDSCAPING,     // WID_TN_LANDSCAPE
+	SPR_IMG_MUSIC,           // WID_TN_MUSIC_SOUND
+	SPR_IMG_MESSAGES,        // WID_TN_MESSAGES
+	SPR_IMG_QUERY,           // WID_TN_HELP
+	SPR_IMG_SWITCH_TOOLBAR,  // WID_TN_SWITCH_BAR
+};
+
 static NWidgetBase *MakeMainToolbar(int *biggest_index)
 {
-	/** Sprites to use for the different toolbar buttons */
-	static const SpriteID toolbar_button_sprites[] = {
-		SPR_IMG_PAUSE,           // WID_TN_PAUSE
-		SPR_IMG_FASTFORWARD,     // WID_TN_FAST_FORWARD
-		SPR_IMG_SETTINGS,        // WID_TN_SETTINGS
-		SPR_IMG_SAVE,            // WID_TN_SAVE
-		SPR_IMG_SMALLMAP,        // WID_TN_SMALL_MAP
-		SPR_IMG_TOWN,            // WID_TN_TOWNS
-		SPR_IMG_SUBSIDIES,       // WID_TN_SUBSIDIES
-		SPR_IMG_COMPANY_LIST,    // WID_TN_STATIONS
-		SPR_IMG_COMPANY_FINANCE, // WID_TN_FINANCES
-		SPR_IMG_COMPANY_GENERAL, // WID_TN_COMPANIES
-		SPR_IMG_STORY_BOOK,      // WID_TN_STORY
-		SPR_IMG_GOAL,            // WID_TN_GOAL
-		SPR_IMG_GRAPHS,          // WID_TN_GRAPHS
-		SPR_IMG_COMPANY_LEAGUE,  // WID_TN_LEAGUE
-		SPR_IMG_INDUSTRY,        // WID_TN_INDUSTRIES
-		SPR_IMG_TRAINLIST,       // WID_TN_TRAINS
-		SPR_IMG_TRUCKLIST,       // WID_TN_ROADVEHS
-		SPR_IMG_SHIPLIST,        // WID_TN_SHIPS
-		SPR_IMG_AIRPLANESLIST,   // WID_TN_AIRCRAFT
-		SPR_IMG_ZOOMIN,          // WID_TN_ZOOMIN
-		SPR_IMG_ZOOMOUT,         // WID_TN_ZOOMOUT
-		SPR_IMG_BUILDRAIL,       // WID_TN_RAILS
-		SPR_IMG_BUILDROAD,       // WID_TN_ROADS
-		SPR_IMG_BUILDWATER,      // WID_TN_WATER
-		SPR_IMG_BUILDAIR,        // WID_TN_AIR
-		SPR_IMG_LANDSCAPING,     // WID_TN_LANDSCAPE
-		SPR_IMG_MUSIC,           // WID_TN_MUSIC_SOUND
-		SPR_IMG_MESSAGES,        // WID_TN_MESSAGES
-		SPR_IMG_QUERY,           // WID_TN_HELP
-		SPR_IMG_SWITCH_TOOLBAR,  // WID_TN_SWITCH_BAR
-	};
-
 	NWidgetMainToolbarContainer *hor = new NWidgetMainToolbarContainer();
-	for (uint i = 0; i < WID_TN_END; i++) {
+	for (uint i = 0; i <= WID_TN_SWITCH_BAR; i++) {
 		switch (i) {
 			case WID_TN_SMALL_MAP:
 			case WID_TN_FINANCES:
@@ -2262,10 +2367,15 @@ static NWidgetBase *MakeMainToolbar(int *biggest_index)
 				hor->Add(new NWidgetSpacer(0, 0));
 				break;
 		}
-		hor->Add(new NWidgetLeaf(i == WID_TN_SAVE ? WWT_IMGBTN_2 : WWT_IMGBTN, COLOUR_GREY, i, toolbar_button_sprites[i], STR_TOOLBAR_TOOLTIP_PAUSE_GAME + i));
+		hor->Add(new NWidgetLeaf(i == WID_TN_SAVE ? WWT_IMGBTN_2 : WWT_IMGBTN, COLOUR_GREY, i, _toolbar_button_sprites[i], STR_TOOLBAR_TOOLTIP_PAUSE_GAME + i));
 	}
 
-	*biggest_index = max<int>(*biggest_index, WID_TN_SWITCH_BAR);
+	hor->Add(new NWidgetSpacer(0, 0));
+	hor->Add(new NWidgetLeaf(WWT_TEXTBTN, COLOUR_GREY, WID_TN_CTRL, STR_TABLET_CTRL, STR_TABLET_CTRL_TOOLTIP));
+	hor->Add(new NWidgetLeaf(WWT_TEXTBTN, COLOUR_GREY, WID_TN_SHIFT, STR_TABLET_SHIFT, STR_TABLET_SHIFT_TOOLTIP));
+	hor->Add(new NWidgetLeaf(WWT_PUSHTXTBTN, COLOUR_GREY, WID_TN_DELETE, STR_TABLET_CLOSE, STR_TABLET_CLOSE_TOOLTIP));
+
+	*biggest_index = max<int>(*biggest_index, WID_TN_DELETE);
 	return hor;
 }
 
@@ -2281,6 +2391,59 @@ static WindowDesc _toolb_normal_desc(
 	&MainToolbarWindow::hotkeys
 );
 
+static NWidgetBase *MakeVerticalLeftToolbar(int *biggest_index)
+{
+	NWidgetVerticalToolbarContainer *tb = new NWidgetVerticalToolbarContainer(0);
+	for (uint i = 0; i <= WID_TN_SWITCH_BAR; i++) {
+		tb->Add(new NWidgetLeaf(i == WID_TN_SAVE ? WWT_IMGBTN_2 : WWT_IMGBTN, COLOUR_GREY, i, _toolbar_button_sprites[i], STR_TOOLBAR_TOOLTIP_PAUSE_GAME + i));
+	}
+
+	tb->Add(new NWidgetLeaf(WWT_TEXTBTN, COLOUR_GREY, WID_TN_CTRL, STR_TABLET_CTRL, STR_TABLET_CTRL_TOOLTIP));
+	tb->Add(new NWidgetLeaf(WWT_TEXTBTN, COLOUR_GREY, WID_TN_SHIFT, STR_TABLET_SHIFT, STR_TABLET_SHIFT_TOOLTIP));
+	tb->Add(new NWidgetLeaf(WWT_PUSHTXTBTN, COLOUR_GREY, WID_TN_DELETE, STR_TABLET_CLOSE, STR_TABLET_CLOSE_TOOLTIP));
+
+	*biggest_index = max<int>(*biggest_index, WID_TN_DELETE);
+	return tb;
+}
+
+static const NWidgetPart _nested_toolbar_vertical_left_widgets[] = {
+	NWidgetFunction(MakeVerticalLeftToolbar),
+};
+
+static WindowDesc _toolb_vertical_left_desc(
+	WDP_MANUAL, NULL, 22, 480,
+	WC_MAIN_TOOLBAR, WC_NONE,
+	WDF_NO_FOCUS,
+	_nested_toolbar_vertical_left_widgets, lengthof(_nested_toolbar_vertical_left_widgets),
+	&MainToolbarWindow::hotkeys
+);
+
+static NWidgetBase *MakeVerticalRightToolbar(int *biggest_index)
+{
+	NWidgetVerticalToolbarContainer *tb = new NWidgetVerticalToolbarContainer(1);
+	for (uint i = 0; i <= WID_TN_SWITCH_BAR; i++) {
+		tb->Add(new NWidgetLeaf(i == WID_TN_SAVE ? WWT_IMGBTN_2 : WWT_IMGBTN, COLOUR_GREY, i, _toolbar_button_sprites[i], STR_TOOLBAR_TOOLTIP_PAUSE_GAME + i));
+	}
+
+	tb->Add(new NWidgetLeaf(WWT_TEXTBTN, COLOUR_GREY, WID_TN_CTRL, STR_TABLET_CTRL, STR_TABLET_CTRL_TOOLTIP));
+	tb->Add(new NWidgetLeaf(WWT_TEXTBTN, COLOUR_GREY, WID_TN_SHIFT, STR_TABLET_SHIFT, STR_TABLET_SHIFT_TOOLTIP));
+	tb->Add(new NWidgetLeaf(WWT_PUSHTXTBTN, COLOUR_GREY, WID_TN_DELETE, STR_TABLET_CLOSE, STR_TABLET_CLOSE_TOOLTIP));
+
+	*biggest_index = max<int>(*biggest_index, WID_TN_DELETE);
+	return tb;
+}
+
+static const NWidgetPart _nested_toolbar_vertical_right_widgets[] = {
+	NWidgetFunction(MakeVerticalRightToolbar),
+};
+
+static WindowDesc _toolb_vertical_right_desc(
+	WDP_MANUAL, NULL, 22, 480,
+	WC_MAIN_TOOLBAR_RIGHT, WC_NONE,
+	WDF_NO_FOCUS,
+	_nested_toolbar_vertical_right_widgets, lengthof(_nested_toolbar_vertical_right_widgets),
+	&MainToolbarWindow::hotkeys
+);
 
 /* --- Toolbar handling for the scenario editor */
 
@@ -2630,6 +2793,14 @@ void AllocateToolbar()
 	if (_game_mode == GM_EDITOR) {
 		new ScenarioEditorToolbarWindow(&_toolb_scen_desc);
 	} else {
-		new MainToolbarWindow(&_toolb_normal_desc);
+		if (_settings_client.gui.vertical_toolbar) {
+			MainToolbarWindow *w = new MainToolbarWindow(&_toolb_vertical_left_desc, &_last_clicked_toolbar_idx, 0);
+			w->left = 0;
+			w = new MainToolbarWindow(&_toolb_vertical_right_desc, &_last_clicked_toolbar_idx, 1);
+			w->left = _screen.width - w->width;
+			SetDirtyBlocks(0, w->top, _screen.width, w->top + w->height);
+		} else {
+			new MainToolbarWindow(&_toolb_normal_desc);
+		}
 	}
 }

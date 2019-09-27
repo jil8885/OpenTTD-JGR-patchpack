@@ -40,6 +40,20 @@ enum ArrowWidgetValues {
 	AWV_RIGHT,    ///< Force the arrow to the right
 };
 
+/** Values for different minimal sizing of widgets. */
+enum NWidSizingType {
+    NWST_NONE,		///< No sizing type is yet defined.
+                    ///< Most buttons and scrollbars are initialized with this value.
+                    ///< Later, they are automatically set to NWST_BUTTON or NWST_STEP.
+    NWST_BUTTON,		///< Size will be set at least _settings_client.gui.min_button.
+    NWST_STEP,		///< Size will be set at least _settings_client.gui.min_step (scrollbars and dropdowns).
+    NWST_KEYBOARD,		///< Size for keyboard keys.
+    NWST_WINDOW_LENGTH,	///< Width for command errors, message windows and statusbar middle part.
+    NWST_VIEWPORT,		///< Sizing type for viewports.
+    NWST_OVERRIDE,		///< Avoid widgets to use automatic minimal sizing.
+    NWST_END
+};
+
 /**
  * Window widget types, nested widget types, and nested widget part types.
  */
@@ -85,6 +99,7 @@ enum WidgetType {
 
 	/* Nested widget part types. */
 	WPT_RESIZE,       ///< Widget part for specifying resizing.
+    WPT_SIZINGTYPE,   ///< Widget part for specifying sizing mode.
 	WPT_MINSIZE,      ///< Widget part for specifying minimal size.
 	WPT_MINTEXTLINES, ///< Widget part for specifying minimal number of lines of text.
 	WPT_FILL,         ///< Widget part for specifying fill.
@@ -160,11 +175,12 @@ public:
 	virtual void Draw(const Window *w) = 0;
 	virtual void SetDirty(const Window *w) const;
 
-	WidgetType type;      ///< Type of the widget / nested widget.
-	uint fill_x;          ///< Horizontal fill stepsize (from initial size, \c 0 means not resizable).
-	uint fill_y;          ///< Vertical fill stepsize (from initial size, \c 0 means not resizable).
-	uint resize_x;        ///< Horizontal resize step (\c 0 means not resizable).
-	uint resize_y;        ///< Vertical resize step (\c 0 means not resizable).
+    WidgetType type;            ///< Type of the widget / nested widget.
+    NWidSizingType sizing_type; ///< Type for deciding minimal sizes of the widget.
+    uint fill_x;                ///< Horizontal fill stepsize (from initial size, \c 0 means not resizable).
+    uint fill_y;                ///< Vertical fill stepsize (from initial size, \c 0 means not resizable).
+    uint resize_x;              ///< Horizontal resize step (\c 0 means not resizable).
+    uint resize_y;              ///< Vertical resize step (\c 0 means not resizable).
 	/* Size of the widget in the smallest window possible.
 	 * Computed by #SetupSmallestSize() followed by #AssignSizePosition().
 	 */
@@ -293,6 +309,11 @@ public:
 	inline void SetDisabled(bool disabled);
 	inline bool IsDisabled() const;
 
+    inline void DrawEdgeOrnament(const Window *w) const;
+    inline void DrawEdgeOrnamentL() const;
+    inline void DrawEdgeOrnamentR() const;
+    inline void DrawEdgeOrnamentT() const;
+    inline void DrawEdgeOrnamentB() const;
 	void FillNestedArray(NWidgetBase **array, uint length) override;
 	NWidgetCore *GetWidgetFromPos(int x, int y) override;
 	bool IsHighlighted() const override;
@@ -498,7 +519,10 @@ public:
 	void SetColour(Colours colour);
 	void SetClicked(int clicked);
 	void SetCount(int count);
-	void SetScrollbar(Scrollbar *sb);
+    void SetScrollbar(Scrollbar *sb);
+    void SetScrollbar(Scrollbar *sb, int index);
+    Scrollbar *GetScrollbar();
+    int GetScrollbarWidget();
 
 	void SetupSmallestSize(Window *w, bool init_array) override;
 	void AssignSizePosition(SizingType sizing, uint x, uint y, uint given_width, uint given_height, bool rtl) override;
@@ -512,6 +536,7 @@ protected:
 	int clicked;    ///< The currently clicked widget.
 	int count;      ///< Amount of valid widgets.
 	Scrollbar *sb;  ///< The scrollbar we're associated with.
+    int sb_index;   ///< The scrollbar widget index.
 private:
 	int widget_w;   ///< The width of the child widget including inter spacing.
 	int widget_h;   ///< The height of the child widget including inter spacing.
@@ -918,6 +943,7 @@ struct NWidgetPart {
 		NWidgetPartTextLines text_lines; ///< Part with text line data.
 		NWidgetFunctionType *func_ptr;   ///< Part with a function call.
 		NWidContainerFlags cont_flags;   ///< Part with container flags.
+        NWidSizingType sizing_type;      ///< Part with sizing type.
 	} u;
 };
 
@@ -937,6 +963,23 @@ static inline NWidgetPart SetResize(int16 dx, int16 dy)
 
 	return part;
 }
+
+/**
+ * Widget part function for setting the automatic minimal size.
+ * @param type How to decide the minimal size of the widget.
+ * @ingroup NestedWidgetParts
+ */
+static inline NWidgetPart SetSizingType(NWidSizingType type)
+{
+	NWidgetPart part;
+
+	part.type = WPT_SIZINGTYPE;
+	part.u.sizing_type = type;
+
+	return part;
+}
+
+uint GetMinSizing(NWidSizingType type, uint min_1 = 0);
 
 /**
  * Widget part function for setting the minimal size.
