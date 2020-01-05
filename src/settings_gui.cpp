@@ -1740,6 +1740,8 @@ static SettingsContainer &GetSettingsTree()
 			interface->Add(new SettingEntry("gui.show_veh_list_cargo_filter"));
 			interface->Add(new SettingEntry("gui.show_adv_load_mode_features"));
 			interface->Add(new SettingEntry("gui.disable_top_veh_list_mass_actions"));
+			interface->Add(new SettingEntry("gui.adv_sig_bridge_tun_modes"));
+			interface->Add(new SettingEntry("gui.show_depot_sell_gui"));
 		}
 
 		SettingsPage *advisors = main->Add(new SettingsPage(STR_CONFIG_SETTING_ADVISORS));
@@ -1864,6 +1866,9 @@ static SettingsContainer &GetSettingsTree()
 			limitations->Add(new SettingEntry("construction.enable_build_river"));
 			limitations->Add(new SettingEntry("construction.enable_remove_water"));
 			limitations->Add(new SettingEntry("construction.road_custom_bridge_heads"));
+			limitations->Add(new SettingEntry("construction.rail_custom_bridge_heads"));
+			limitations->Add(new SettingEntry("construction.allow_grf_objects_under_bridges"));
+			limitations->Add(new SettingEntry("construction.allow_stations_under_bridges"));
 		}
 
 		SettingsPage *disasters = main->Add(new SettingsPage(STR_CONFIG_SETTING_ACCIDENTS));

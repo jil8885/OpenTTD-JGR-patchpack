@@ -26,6 +26,7 @@
 #include "../settings_type.h"
 #include "../tilehighlight_func.h"
 #include "../viewport_func.h"
+#include "../framerate_type.h"
 #include "sdl_v.h"
 #include <SDL.h>
 #ifdef __ANDROID__
@@ -158,6 +159,8 @@ static void CheckPaletteAnim()
 
 static void DrawSurfaceToScreen()
 {
+	PerformanceMeasurer framerate(PFE_VIDEO);
+
 	int n = _num_dirty_rects;
 #ifdef __ANDROID__
 	if (n == 0 && !_left_button_down) return; // We have to update the screen regularly to receive mouse_up event on Android

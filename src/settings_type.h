@@ -198,6 +198,8 @@ struct GUISettings {
 	bool   enable_single_veh_shared_order_gui;    ///< enable showing a single vehicle in the shared order GUI window
 	bool   show_adv_load_mode_features;      ///< enable advanced loading mode features in UI
 	bool   disable_top_veh_list_mass_actions;     ///< disable mass actions buttons for non-group vehicle lists
+	bool   adv_sig_bridge_tun_modes;         ///< Enable advanced modes for signals on bridges/tunnels.
+	bool   show_depot_sell_gui;              ///< Show go to depot and sell in UI
 
 	uint16 console_backlog_timeout;          ///< the minimum amount of time items should be in the console backlog before they will be removed in ~3 seconds granularity.
 	uint16 console_backlog_length;           ///< the minimum amount of items in the console backlog before items will be removed.
@@ -381,6 +383,9 @@ struct ConstructionSettings {
 	bool   enable_remove_water;              ///< enable removing sea and rivers in-game
 	uint8  road_custom_bridge_heads;         ///< allow construction of road custom bridge heads
 	bool   chunnel;                          ///< allow construction of tunnels under water
+	uint8  rail_custom_bridge_heads;         ///< allow construction of rail custom bridge heads
+	bool   allow_grf_objects_under_bridges;  ///< allow all NewGRF objects under bridges
+	bool   allow_stations_under_bridges;     ///< allow all station tiles under bridges
 
 	uint32 terraform_per_64k_frames;         ///< how many tile heights may, over a long period, be terraformed per 65536 frames?
 	uint16 terraform_frame_burst;            ///< how many tile heights may, over a short period, be terraformed?

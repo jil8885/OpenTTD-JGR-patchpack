@@ -33,8 +33,11 @@
 #include "tunnelbridge_map.h"
 #include "pathfinder/npf/aystar.h"
 #include "saveload/saveload.h"
+#include "framerate_type.h"
 #include "3rdparty/cpp-btree/btree_set.h"
 #include "scope_info.h"
+#include <list>
+#include <set>
 #include <deque>
 
 #include "table/strings.h"
@@ -353,7 +356,7 @@ Slope GetFoundationSlope(TileIndex tile, int *z)
 
 bool HasFoundationNW(TileIndex tile, Slope slope_here, uint z_here)
 {
-	if (IsRoadCustomBridgeHeadTile(tile) && GetTunnelBridgeDirection(tile) == DIAGDIR_NW) return false;
+	if (IsCustomBridgeHeadTile(tile) && GetTunnelBridgeDirection(tile) == DIAGDIR_NW) return false;
 
 	int z;
 
@@ -372,7 +375,7 @@ bool HasFoundationNW(TileIndex tile, Slope slope_here, uint z_here)
 
 bool HasFoundationNE(TileIndex tile, Slope slope_here, uint z_here)
 {
-	if (IsRoadCustomBridgeHeadTile(tile) && GetTunnelBridgeDirection(tile) == DIAGDIR_NE) return false;
+	if (IsCustomBridgeHeadTile(tile) && GetTunnelBridgeDirection(tile) == DIAGDIR_NE) return false;
 
 	int z;
 
@@ -726,6 +729,8 @@ TileIndex _cur_tileloop_tile;
  */
 void RunTileLoop()
 {
+	PerformanceAccumulator framerate(PFE_GL_LANDSCAPE);
+
 	/* The pseudorandom sequence of tiles is generated using a Galois linear feedback
 	 * shift register (LFSR). This allows a deterministic pseudorandom ordering, but
 	 * still with minimal state and fast iteration. */
@@ -1089,8 +1094,7 @@ static uint River_Hash(uint tile, uint dir)
  */
 static void BuildRiver(TileIndex begin, TileIndex end)
 {
-	AyStar finder;
-	MemSetT(&finder, 0);
+	AyStar finder = {};
 	finder.CalculateG = River_CalculateG;
 	finder.CalculateH = River_CalculateH;
 	finder.GetNeighbours = River_GetNeighbours;
@@ -1313,10 +1317,14 @@ void OnTick_LinkGraph();
 
 void CallLandscapeTick()
 {
-	OnTick_Town();
-	OnTick_Trees();
-	OnTick_Station();
-	OnTick_Industry();
+	{
+		PerformanceAccumulator framerate(PFE_GL_LANDSCAPE);
+
+		OnTick_Town();
+		OnTick_Trees();
+		OnTick_Station();
+		OnTick_Industry();
+	}
 
 	OnTick_Companies();
 	OnTick_LinkGraph();

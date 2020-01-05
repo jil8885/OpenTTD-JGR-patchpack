@@ -64,6 +64,7 @@
 #include "subsidy_func.h"
 #include "gfx_layout.h"
 #include "viewport_sprite_sorter.h"
+#include "framerate_type.h"
 #include "programmable_signals.h"
 #include "smallmap_gui.h"
 #include "viewport_func.h"
@@ -140,13 +141,17 @@ void CDECL error(const char *s, ...)
 	abort();
 }
 
-void CDECL assert_msg_error(int line, const char *file, const char *expr, const char *str, ...)
+void CDECL assert_msg_error(int line, const char *file, const char *expr, const char *extra, const char *str, ...)
 {
 	va_list va;
 	char buf[2048];
 
 	char *b = buf;
 	b += seprintf(b, lastof(buf), "Assertion failed at line %i of %s: %s\n\t", line, file, expr);
+
+	if (extra != nullptr) {
+		b += seprintf(b, lastof(buf), "%s\n\t", extra);
+	}
 
 	va_start(va, str);
 	vseprintf(b, lastof(buf), str, va);
@@ -157,6 +162,12 @@ void CDECL assert_msg_error(int line, const char *file, const char *expr, const 
 	/* Set the error message for the crash log and then invoke it. */
 	CrashLog::SetErrorMessage(buf);
 	abort();
+}
+
+const char *assert_tile_info(uint32 tile) {
+	static char buffer[128];
+	DumpTileInfo(buffer, lastof(buffer), tile);
+	return buffer;
 }
 
 /**
@@ -401,8 +412,7 @@ static void LoadIntroGame(bool load_newgrfs = true)
 
 	CheckForMissingGlyphs();
 
-	/* Play main theme */
-	if (MusicDriver::GetInstance()->IsSongPlaying()) ResetMusic();
+	MusicLoop(); // ensure music is correct
 }
 
 void MakeNewgameSettingsLive()
@@ -1581,6 +1591,14 @@ void StateGameLoop()
 
 	/* don't execute the state loop during pause */
 	if (_pause_mode != PM_UNPAUSED) {
+		PerformanceMeasurer::Paused(PFE_GAMELOOP);
+		PerformanceMeasurer::Paused(PFE_GL_ECONOMY);
+		PerformanceMeasurer::Paused(PFE_GL_TRAINS);
+		PerformanceMeasurer::Paused(PFE_GL_ROADVEHS);
+		PerformanceMeasurer::Paused(PFE_GL_SHIPS);
+		PerformanceMeasurer::Paused(PFE_GL_AIRCRAFT);
+		PerformanceMeasurer::Paused(PFE_GL_LANDSCAPE);
+
 		UpdateLandscapingLimits();
 #ifndef DEBUG_DUMP_COMMANDS
 		Game::GameLoop();
@@ -1588,6 +1606,9 @@ void StateGameLoop()
 		CallWindowTickEvent();
 		return;
 	}
+
+	PerformanceMeasurer framerate(PFE_GAMELOOP);
+	PerformanceAccumulator::Reset(PFE_GL_LANDSCAPE);
 	if (HasModalProgress()) return;
 
 	Layouter::ReduceLineCache();

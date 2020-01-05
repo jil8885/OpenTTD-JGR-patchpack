@@ -665,12 +665,15 @@ static const StringID _order_depot_action_dropdown[] = {
 	STR_ORDER_DROP_GO_ALWAYS_DEPOT,
 	STR_ORDER_DROP_SERVICE_DEPOT,
 	STR_ORDER_DROP_HALT_DEPOT,
+	STR_ORDER_DROP_SELL_DEPOT,
 	INVALID_STRING_ID
 };
 
 static int DepotActionStringIndex(const Order *order)
 {
-	if (order->GetDepotActionType() & ODATFB_HALT) {
+	if (order->GetDepotActionType() & ODATFB_SELL) {
+		return DA_SELL;
+	} else if (order->GetDepotActionType() & ODATFB_HALT) {
 		return DA_STOP;
 	} else if (order->GetDepotOrderType() & ODTFB_SERVICE) {
 		return DA_SERVICE;
@@ -729,6 +732,8 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 		if (GetOrderDistance(order, next, v) > Aircraft::From(v)->acache.cached_max_range_sqr) SetDParam(10, STR_ORDER_OUT_OF_RANGE);
 	}
 
+	bool timetable_wait_time_valid = false;
+
 	switch (order->GetType()) {
 		case OT_DUMMY:
 			SetDParam(0, STR_INVALID_ORDER);
@@ -757,6 +762,7 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 					SetDParam(5, order->IsWaitTimetabled() ? STR_TIMETABLE_STAY_FOR : STR_TIMETABLE_STAY_FOR_ESTIMATED);
 					SetTimetableParams(6, order->GetWaitTime());
 				}
+				timetable_wait_time_valid = true;
 			} else {
 				SetDParam(3, (order->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION) ? STR_EMPTY : _station_load_types[order->IsRefit()][unload][load]);
 				if (order->IsRefit()) {
@@ -791,13 +797,17 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 				SetDParam(1, (order->GetNonStopType() & ONSF_NO_STOP_AT_INTERMEDIATE_STATIONS) ? STR_ORDER_GO_NON_STOP_TO : STR_ORDER_GO_TO);
 			}
 
-			if (!timetable && (order->GetDepotActionType() & ODATFB_HALT)) {
-				SetDParam(5, STR_ORDER_STOP_ORDER);
-			}
+			if (!timetable && (order->GetDepotActionType() & ODATFB_SELL)) {
+				SetDParam(5, STR_ORDER_SELL_ORDER);
+			} else {
+				if (!timetable && (order->GetDepotActionType() & ODATFB_HALT)) {
+					SetDParam(5, STR_ORDER_STOP_ORDER);
+				}
 
-			if (!timetable && order->IsRefit()) {
-				SetDParam(5, (order->GetDepotActionType() & ODATFB_HALT) ? STR_ORDER_REFIT_STOP_ORDER : STR_ORDER_REFIT_ORDER);
-				SetDParam(6, CargoSpec::Get(order->GetRefitCargo())->name);
+				if (!timetable && order->IsRefit()) {
+					SetDParam(5, (order->GetDepotActionType() & ODATFB_HALT) ? STR_ORDER_REFIT_STOP_ORDER : STR_ORDER_REFIT_ORDER);
+					SetDParam(6, CargoSpec::Get(order->GetRefitCargo())->name);
+				}
 			}
 
 			if (timetable) {
@@ -805,6 +815,7 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 					SetDParam(5, order->IsWaitTimetabled() ? STR_TIMETABLE_STAY_FOR : STR_TIMETABLE_STAY_FOR_ESTIMATED);
 					SetTimetableParams(6, order->GetWaitTime());
 				}
+				timetable_wait_time_valid = !(order->GetDepotActionType() & ODATFB_HALT);
 			}
 			break;
 
@@ -880,7 +891,20 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 		default: NOT_REACHED();
 	}
 
-	DrawString(rtl ? left : middle, rtl ? middle : right, y, STR_ORDER_TEXT, colour);
+	int edge = DrawString(rtl ? left : middle, rtl ? middle : right, y, STR_ORDER_TEXT, colour);
+
+	if (timetable && timetable_wait_time_valid && order->IsWaitFixed()) {
+		Dimension lock_d = GetSpriteSize(SPR_LOCK);
+		DrawPixelInfo tmp_dpi;
+		if (FillDrawPixelInfo(&tmp_dpi, rtl ? left : middle, y, rtl ? middle - left : right - middle, lock_d.height)) {
+			DrawPixelInfo *old_dpi = _cur_dpi;
+			_cur_dpi = &tmp_dpi;
+
+			DrawSprite(SPR_LOCK, PAL_NONE, rtl ? edge - 3 - lock_d.width - left : edge + 3 - middle, 0);
+
+			_cur_dpi = old_dpi;
+		}
+	}
 }
 
 /**
@@ -1061,8 +1085,6 @@ private:
 	Scrollbar *vscroll;
 	bool can_do_refit;     ///< Vehicle chain can be refitted in depot.
 	bool can_do_autorefit; ///< Vehicle chain can be auto-refitted.
-	StringID cargo_names_list[NUM_CARGO + 1];
-	uint32 cargo_bitmask;
 	int query_text_widget; ///< widget which most recently called ShowQueryString
 
 	/**
@@ -1433,18 +1455,6 @@ public:
 				size->width = WD_FRAMERECT_LEFT + GetStringBoundingBox(STR_ORDERS_OCCUPANCY_PERCENT).width + 10 + WD_FRAMERECT_RIGHT;
 				break;
 		}
-
-
-		/* Create cargo bitmask */
-		assert_compile(NUM_CARGO <= 32);
-		for (CargoID c = 0; c < NUM_CARGO; c++) {
-			if (CargoSpec::Get(c)->IsValid()) {
-				this->cargo_names_list[c] = CargoSpec::Get(c)->name;
-				SetBit(this->cargo_bitmask, c);
-			}
-		}
-		this->cargo_bitmask = ~this->cargo_bitmask;
-		this->cargo_names_list[NUM_CARGO] = INVALID_STRING_ID;
 	}
 
 	/**
@@ -1672,7 +1682,11 @@ public:
 					bool is_slot_occupancy = (ocv == OCV_SLOT_OCCUPANCY);
 
 					if (is_cargo) {
-						this->GetWidget<NWidgetCore>(WID_O_COND_CARGO)->widget_data = cargo_names_list[(order == NULL) ? 0 : order->GetConditionValue()];
+						if (order == NULL || !CargoSpec::Get(order->GetConditionValue())->IsValid()) {
+							this->GetWidget<NWidgetCore>(WID_O_COND_CARGO)->widget_data = STR_NEWGRF_INVALID_CARGO;
+						} else {
+							this->GetWidget<NWidgetCore>(WID_O_COND_CARGO)->widget_data = CargoSpec::Get(order->GetConditionValue())->name;
+						}
 						this->GetWidget<NWidgetStacked>(WID_O_SEL_COND_VALUE)->SetDisplayedPlane(DP_COND_VALUE_CARGO);
 					} else if (is_slot_occupancy) {
 						TraceRestrictSlotID slot_id = (order != nullptr && TraceRestrictSlot::IsValidID(order->GetXData()) ? order->GetXData() : INVALID_TRACE_RESTRICT_SLOT_ID);
@@ -1996,7 +2010,8 @@ public:
 				if (this->GetWidget<NWidgetLeaf>(widget)->ButtonHit(pt)) {
 					this->OrderClick_Service(-1);
 				} else {
-					ShowDropDownMenu(this, _order_depot_action_dropdown, DepotActionStringIndex(this->vehicle->GetOrder(this->OrderGetSel())), WID_O_SERVICE, 0, 0, 0, DDSF_LOST_FOCUS);
+					ShowDropDownMenu(this, _order_depot_action_dropdown, DepotActionStringIndex(this->vehicle->GetOrder(this->OrderGetSel())),
+							WID_O_SERVICE, 0, _settings_client.gui.show_depot_sell_gui ? 0 : (1 << DA_SELL), 0, DDSF_LOST_FOCUS);
 				}
 				break;
 
@@ -2029,7 +2044,16 @@ public:
 
 			case WID_O_COND_CARGO: {
 				uint value = this->vehicle->GetOrder(this->OrderGetSel())->GetConditionValue();
-				ShowDropDownMenu(this, cargo_names_list, value, WID_O_COND_CARGO, 0, cargo_bitmask);
+				DropDownList *list = new DropDownList();
+				for (size_t i = 0; i < _sorted_standard_cargo_specs_size; ++i) {
+					const CargoSpec *cs = _sorted_cargo_specs[i];
+					*list->Append() = new DropDownListStringItem(cs->name, cs->Index(), false);
+				}
+				if (list->Length() == 0) {
+					delete list;
+					return;
+				}
+				ShowDropDownList(this, list, value, WID_O_COND_CARGO, 0);
 				break;
 			}
 

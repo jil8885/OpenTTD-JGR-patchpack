@@ -36,6 +36,7 @@
 #include "infrastructure_func.h"
 #include "tunnelbridge_map.h"
 #include "zoom_func.h"
+#include "framerate_type.h"
 
 #include "table/strings.h"
 
@@ -50,11 +51,11 @@ WaterClass GetEffectiveWaterClass(TileIndex tile)
 {
 	if (HasTileWaterClass(tile)) return GetWaterClass(tile);
 	if (IsTileType(tile, MP_TUNNELBRIDGE)) {
-		assert(GetTunnelBridgeTransportType(tile) == TRANSPORT_WATER);
+		assert_tile(GetTunnelBridgeTransportType(tile) == TRANSPORT_WATER, tile);
 		return WATER_CLASS_CANAL;
 	}
 	if (IsTileType(tile, MP_RAILWAY)) {
-		assert(GetRailGroundType(tile) == RAIL_GROUND_WATER);
+		assert_tile(GetRailGroundType(tile) == RAIL_GROUND_WATER, tile);
 		return WATER_CLASS_SEA;
 	}
 	NOT_REACHED();
@@ -688,6 +689,10 @@ static void ShipController(Ship *v)
 				if (v->current_order.IsType(OT_LEAVESTATION)) {
 					v->current_order.Free();
 					SetWindowWidgetDirty(WC_VEHICLE_VIEW, v->index, WID_VV_START_STOP);
+					/* Test if continuing forward would lead to a dead-end, moving into the dock. */
+					DiagDirection exitdir = VehicleExitDir(v->direction, v->state);
+					TileIndex tile = TileAddByDiagDir(v->tile, exitdir);
+					if (TrackStatusToTrackBits(GetTileTrackStatus(tile, TRANSPORT_WATER, 0, exitdir)) == TRACK_BIT_NONE) goto reverse_direction;
 				} else if (v->dest_tile != 0) {
 					/* We have a target, let's see if we reached it... */
 					if (v->current_order.IsType(OT_GOTO_WAYPOINT) &&
@@ -788,6 +793,8 @@ reverse_direction:
 
 bool Ship::Tick()
 {
+	PerformanceAccumulator framerate(PFE_GL_SHIPS);
+
 	if (!(this->vehstatus & VS_STOPPED)) this->running_ticks++;
 
 	ShipController(this);

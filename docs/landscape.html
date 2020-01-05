@@ -224,10 +224,9 @@
    <td>
     <ul>
      <li>m1 bits 4..0: <a href="#OwnershipInfo">owner</a> of the tile</li>
-     <li style="color: blue">m1 bit 7: bit 4 of track type (more rail types patch)</li>
      <li>m2: see signals</li>
      <li>m3 bits 7..4: see signals</li>
-     <li style="color: purple">m3 bits 3..0 = bits 3..0 of <a name="TrackType">track type</a>:
+     <li>m8 bits 5..0 = <a name="TrackType">track type</a>:
       <table>
        <tr>
         <td><tt>0</tt>&nbsp; </td>
@@ -633,8 +632,9 @@
        <li>m5 bit 6 set: level crossing
         <ul>
          <li>m1 bits 4..0: <a href="#OwnershipInfo">owner</a> of the railway track</li>
-         <li style="color: blue">m1 bit 7: bit 4 of <a href="#TrackType">track type</a> for railway (more rail types patch)</li>
-         <li style="color: purple">m3 bits 3..0: bits 3..0 of <a href="#TrackType">railway track type</a></li>
+         <li>m5 bit 5: set if crossing lights are on</li>
+         <li>m5 bit 4: pbs reservation state</li>
+         <li style="color: blue">m5 bit 1: set if crossing is possibly occupied by a road vehicle</li>
          <li>m5 bit 0: direction
           <table>
            <tr>
@@ -647,10 +647,8 @@
            </tr>
           </table>
          </li>
-         <li>m5 bit 5: set if crossing lights are on</li>
          <li>m7 bits 4..0: <a href="#OwnershipInfo">owner</a> of the road type 0 (normal road)</li>
-         <li>m5 bit 4: pbs reservation state</li>
-         <li style="color: blue">m5 bit 1: set if crossing is possibly occupied by a road vehicle</li>
+         <li>m8 bits 5..0: <a href="#TrackType">railway track type</a></li>
         </ul>
        </li>
       </ul>
@@ -864,13 +862,11 @@
    <td valign=top nowrap>&nbsp;</td>
    <td>
     <ul>
-     <li style="color: blue">m1 bit 7: bit 4 of <a href="#TrackType">track type</a> for railway (more rail types patch)</li>
      <li>m1 bits 6..5: water class for buoys, water part of docks and for airport tiles</li>
      <li>m1 bits 4..0: <a href="#OwnershipInfo">owner</a> of the station</li>
      <li>m2: index into the array of stations</li>
      <li>m3 bits 7..4: persistent random data for railway stations/waypoints and airports)</li>
      <li>m3 bits 7..4: <a href="#OwnershipInfo">owner</a> of tram tracks (road stop)</li>
-     <li style="color: purple">m3 bits 3..0: bits 3..0 of <a href="#TrackType">track type</a> for railway stations/waypoints</li>
      <li>m4: custom station id; 0 means standard graphics</li>
      <li>m5: graphics index (range from 0..255 for each station type):
       <table>
@@ -989,6 +985,7 @@
      <li>m7 bits 4..0: <a href="#OwnershipInfo">owner</a> of road (road stops)</li>
      <li>m7 bits 7..6: present road types (road stops)</li>
      <li>m7: animation frame (railway stations/waypoints, airports)</li>
+     <li>m8 bits 5..0: <a href="#TrackType">track type</a> for railway stations/waypoints</li>
     </ul>
    </td>
   </tr>
@@ -1452,7 +1449,6 @@
    <td valign=top nowrap>&nbsp;</td>
    <td>
     <ul>
-     <li style="color: blue">m1 bit 7: bit 4 of <a href="#TrackType">track type</a> for railway (more rail types patch)</li>
      <li>m1 bits 4..0: <a href="#OwnershipInfo">owner</a></li>
      <li style="color: blue">m2 bits 7..0: custom road bridge heads (flat bridge heads only)<br>
       Road/tram bits below are XORed with the axial bridge direction road bits.<br>
@@ -1496,9 +1492,74 @@
        </tr>
       </table>
      </li>
+     <li style="color: blue">m2 bits 2..0: rail bridge heads track reserved for pbs
+       <table style="color: blue">
+        <tr>
+          <td><tt>0</tt>&nbsp; </td>
+          <td>not reserved</td>
+        </tr>
+        <tr>
+          <td><tt>1</tt>&nbsp; </td>
+          <td>X direction</td>
+        </tr>
+        <tr>
+          <td><tt>2</tt>&nbsp; </td>
+          <td>Y direction</td>
+        </tr>
+        <tr>
+          <td><tt>3</tt>&nbsp; </td>
+          <td>north corner (W-E)</td>
+        </tr>
+        <tr>
+          <td><tt>4</tt>&nbsp; </td>
+          <td>south corner (W-E)</td>
+        </tr>
+        <tr>
+          <td><tt>5</tt>&nbsp; </td>
+          <td>west corner (N-S)</td>
+        </tr>
+        <tr>
+          <td><tt>6</tt>&nbsp; </td>
+          <td>east corner (N-S)</td>
+        </tr>
+       </table>
+     </li>
+     <li style="color: blue">m2 bit 3: rail bridge heads opposite track is reserved, too</li>
      <li>m3 bits 7..4: <a href="#OwnershipInfo">owner</a> of tram</li>
-     <li style="color: purple">m3 bits 3..0: bits 3..0 of <a href="#TrackType">track type</a> for railway</li>
-     <li>m5 bit 4: pbs reservation state for railway</li>
+     <li style="color: blue">m4 bits 5..0: rail bridge heads track layout: bit set = track present:
+      <table style="color: blue">
+       <tr>
+        <td nowrap valign=top>bit 0: </td>
+        <td align=left>in the X direction</td>
+       </tr>
+
+       <tr>
+        <td nowrap valign=top>bit 1: </td>
+        <td align=left>in the Y direction</td>
+       </tr>
+
+       <tr>
+        <td nowrap valign=top>bit 2: </td>
+        <td align=left>in the north corner (direction W-E)</td>
+       </tr>
+
+       <tr>
+        <td nowrap valign=top>bit 3: </td>
+        <td align=left>in the south corner (direction W-E)</td>
+       </tr>
+
+       <tr>
+        <td nowrap valign=top>bit 4: </td>
+        <td align=left>in the west corner (direction N-S)</td>
+       </tr>
+
+       <tr>
+        <td nowrap valign=top>bit 5: </td>
+        <td align=left>in the east corner (direction N-S)</td>
+       </tr>
+      </table>
+     </li>
+     <li>m5 bit 4: pbs reservation state for railway (tunnel only)</li>
      <li>m5 bit 7 clear: tunnel entrance/exit</li>
      <li>m5 bit 7 set: bridge ramp
       <ul>
@@ -1607,14 +1668,20 @@
         <td><tt>2</tt>&nbsp;</td>
         <td>signal simulation exit (bit 6 set)</td>
        </tr>
+
+       <tr>
+        <td><tt>3</tt>&nbsp;</td>
+        <td>signal simulation bidirectional entrance and exit (bits 5 and 6 set)</td>
+       </tr>
       </table>
       If signal simulation entrance or exit:
       <ul>
+       <li>m6 bit 7: set = exit signal shows green, clear = exit signal shows red</li>
        <li>m6 bit 6: set = PBS signals, clear = block signals</li>
        <li>m6 bit 1: set = semaphore signals, clear = light signals</li>
-       <li>m6 bit 0: set = signal shows green, clear = signal shows red</li>
+       <li>m6 bit 0: set = entrance signal shows green, clear = entrance signal shows red</li>
        <li>m2 bit 15: for bridge entrances only: storage for visual red/green state of signals starting from 15 is allocated outside the map array</li>
-       <li>m2 bits 14..0: for bridge entrances only: for signals 0..14 on bridge, signal is visually red if corresponding bit in 0..14 is set</li>
+       <li>m2 bits 14..4: for bridge entrances only: for signals 0..10 on bridge, signal is visually red if corresponding bit in 4..14 is set</li>
       </ul>
      </li>
      <li>m5 bits 3..2: transport type
@@ -1661,6 +1728,7 @@
      <li>m7 bits 4..0: <a href="#OwnershipInfo">owner</a> of road</li>
      <li>m7 bit 5 set = on snow or desert</li>
      <li>m7 bits 7..6: present road types for road</li>
+     <li>m8 bits 5..0: <a href="#TrackType">track type</a> for railway</li>
     </ul>
    </td>
   </tr>

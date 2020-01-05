@@ -105,7 +105,7 @@ public:
 		assert(IsValidTrackdir(td2));
 		int cost = 0;
 		if (TrackFollower::Allow90degTurns()
-				&& ((TrackdirToTrackdirBits(td2) & (TrackdirBits)TrackdirCrossesTrackdirs(td1)) != 0)) {
+				&& HasTrackdir(TrackdirCrossesTrackdirs(td1), td2)) {
 			/* 90-deg curve penalty */
 			cost += Yapf().PfGetSettings().rail_curve90_penalty;
 		} else if (td2 != NextTrackdir(td1)) {
@@ -378,7 +378,7 @@ public:
 				}
 			}
 		}
-		if (IsTileType(tile, MP_TUNNELBRIDGE) && IsTunnelBridgeSignalSimulationExit(tile) && DiagDirToDiagTrackdir(GetTunnelBridgeDirection(tile)) == trackdir) {
+		if (IsTileType(tile, MP_TUNNELBRIDGE) && IsTunnelBridgeSignalSimulationExitOnly(tile) && TrackdirEntersTunnelBridge(tile, trackdir)) {
 			/* Entering a signalled bridge/tunnel from the wrong side, equivalent to encountering a one-way signal from the wrong side */
 			n.m_segment->m_end_segment_reason |= ESRB_DEAD_END;
 		}
@@ -418,7 +418,7 @@ public:
 	{
 		assert(!n.flags_u.flags_s.m_targed_seen);
 		assert(tf->m_new_tile == n.m_key.m_tile);
-		assert((TrackdirToTrackdirBits(n.m_key.m_td) & tf->m_new_td_bits) != TRACKDIR_BIT_NONE);
+		assert((HasTrackdir(tf->m_new_td_bits, n.m_key.m_td)));
 
 		CPerfStart perf_cost(&Yapf().m_perf_cost);
 
@@ -500,7 +500,7 @@ public:
 					end_segment_reason = segment.m_end_segment_reason;
 					/* We will need also some information about the last signal (if it was red). */
 					if (segment.m_last_signal_tile != INVALID_TILE) {
-						assert(HasSignalOnTrackdir(segment.m_last_signal_tile, segment.m_last_signal_td));
+						assert_tile(HasSignalOnTrackdir(segment.m_last_signal_tile, segment.m_last_signal_td), segment.m_last_signal_tile);
 						SignalState sig_state = GetSignalStateByTrackdir(segment.m_last_signal_tile, segment.m_last_signal_td);
 						bool is_red = (sig_state == SIGNAL_STATE_RED);
 						n.flags_u.flags_s.m_last_signal_was_red = is_red;
@@ -539,7 +539,7 @@ no_entry_cost: // jump here at the beginning if the node has no parent (it is th
 			/* Tests for 'potential target' reasons to close the segment. */
 			if (cur.tile == prev.tile) {
 				/* Penalty for reversing in a depot. */
-				assert(IsRailDepot(cur.tile));
+				assert_tile(IsRailDepot(cur.tile), cur.tile);
 				segment_cost += Yapf().PfGetSettings().rail_depot_reverse_penalty;
 
 			} else if (IsRailDepotTile(cur.tile)) {

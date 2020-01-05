@@ -49,6 +49,7 @@
 #include "tutorial_gui.h"
 #include "plans_func.h"
 #include "toolbar_gui.h"
+#include "framerate_type.h"
 #include "zoning.h"
 
 #include "widgets/toolbar_widget.h"
@@ -1125,6 +1126,7 @@ static CallBackFunction ToolbarHelpClick(Window *w)
 	}
 	ShowDropDownList(w, list, 0, WID_TN_HELP, 140, true);
 	if (_settings_client.sound.click_beep) SndPlayFx(SND_15_BEEP);
+	PopupMainToolbMenu(w, WID_TN_HELP, STR_ABOUT_MENU_LAND_BLOCK_INFO, _settings_client.gui.newgrf_developer_tools ? 13 : 10);
 	return CBF_NONE;
 }
 

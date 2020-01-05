@@ -17,6 +17,7 @@
 #include "vehicle_base.h"
 #include "station_base.h"
 #include "waypoint_base.h"
+#include "map_func.h"
 #include "table/strings.h"
 
 #include "safeguards.h"
@@ -39,6 +40,8 @@ int WriteScopeLog(char *buf, const char *last)
 	}
 	return b - buf;
 }
+
+#endif
 
 // helper functions
 const char *scope_dumper::CompanyInfo(int company_id)
@@ -115,4 +118,7 @@ const char *scope_dumper::StationInfo(const BaseStation *st)
 	return this->buffer;
 }
 
-#endif
+const char *scope_dumper::TileInfo(TileIndex tile)
+{
+	return DumpTileInfo(this->buffer, lastof(this->buffer), tile);
+}

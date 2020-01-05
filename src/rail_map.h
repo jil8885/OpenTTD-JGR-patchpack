@@ -37,7 +37,7 @@ enum RailTileType {
  */
 static inline RailTileType GetRailTileType(TileIndex t)
 {
-	assert(IsTileType(t, MP_RAILWAY));
+	assert_tile(IsTileType(t, MP_RAILWAY), t);
 	return (RailTileType)GB(_m[t].m5, 6, 2);
 }
 
@@ -84,7 +84,7 @@ static inline bool HasSignals(TileIndex t)
  */
 static inline void SetHasSignals(TileIndex tile, bool signals)
 {
-	assert(IsPlainRailTile(tile));
+	assert_tile(IsPlainRailTile(tile), tile);
 	SB(_m[tile].m5, 6, 1, signals);
 }
 
@@ -116,7 +116,7 @@ static inline bool IsRailDepotTile(TileIndex t)
  */
 static inline RailType GetRailType(TileIndex t)
 {
-	return (RailType)((GB(_m[t].m1, 7, 1) << 4) | GB(_m[t].m3, 0, 4));
+	return (RailType)GB(_me[t].m8, 0, 6);
 }
 
 /**
@@ -126,8 +126,7 @@ static inline RailType GetRailType(TileIndex t)
  */
 static inline void SetRailType(TileIndex t, RailType r)
 {
-	SB(_m[t].m1, 7, 1, GB(r, 4, 1));
-	SB(_m[t].m3, 0, 4, GB(r, 0, 4));
+	SB(_me[t].m8, 0, 6, r);
 }
 
 
@@ -138,7 +137,7 @@ static inline void SetRailType(TileIndex t, RailType r)
  */
 static inline TrackBits GetTrackBits(TileIndex tile)
 {
-	assert(IsPlainRailTile(tile));
+	assert_tile(IsPlainRailTile(tile), tile);
 	return (TrackBits)GB(_m[tile].m5, 0, 6);
 }
 
@@ -149,7 +148,7 @@ static inline TrackBits GetTrackBits(TileIndex tile)
  */
 static inline void SetTrackBits(TileIndex t, TrackBits b)
 {
-	assert(IsPlainRailTile(t));
+	assert_tile(IsPlainRailTile(t), t);
 	SB(_m[t].m5, 0, 6, b);
 }
 
@@ -196,7 +195,7 @@ static inline Track GetRailDepotTrack(TileIndex t)
  */
 static inline TrackBits GetRailReservationTrackBits(TileIndex t)
 {
-	assert(IsPlainRailTile(t));
+	assert_tile(IsPlainRailTile(t), t);
 	byte track_b = GB(_m[t].m2, 8, 3);
 	Track track = (Track)(track_b - 1);    // map array saves Track+1
 	if (track_b == 0) return TRACK_BIT_NONE;
@@ -211,7 +210,7 @@ static inline TrackBits GetRailReservationTrackBits(TileIndex t)
  */
 static inline void SetTrackReservation(TileIndex t, TrackBits b)
 {
-	assert(IsPlainRailTile(t));
+	assert_tile(IsPlainRailTile(t), t);
 	assert(b != INVALID_TRACK_BIT);
 	assert(!TracksOverlap(b));
 	Track track = RemoveFirstTrack(&b);
@@ -228,7 +227,7 @@ static inline void SetTrackReservation(TileIndex t, TrackBits b)
  */
 static inline bool TryReserveTrack(TileIndex tile, Track t)
 {
-	assert(HasTrack(tile, t));
+	assert_tile(HasTrack(tile, t), tile);
 	TrackBits bits = TrackToTrackBits(t);
 	TrackBits res = GetRailReservationTrackBits(tile);
 	if ((res & bits) != TRACK_BIT_NONE) return false;  // already reserved
@@ -246,7 +245,7 @@ static inline bool TryReserveTrack(TileIndex tile, Track t)
  */
 static inline void UnreserveTrack(TileIndex tile, Track t)
 {
-	assert(HasTrack(tile, t));
+	assert_tile(HasTrack(tile, t), tile);
 	TrackBits res = GetRailReservationTrackBits(tile);
 	res &= ~TrackToTrackBits(t);
 	SetTrackReservation(tile, res);
@@ -260,7 +259,7 @@ static inline void UnreserveTrack(TileIndex tile, Track t)
  */
 static inline bool HasDepotReservation(TileIndex t)
 {
-	assert(IsRailDepot(t));
+	assert_tile(IsRailDepot(t), t);
 	return HasBit(_m[t].m5, 4);
 }
 
@@ -272,7 +271,7 @@ static inline bool HasDepotReservation(TileIndex t)
  */
 static inline void SetDepotReservation(TileIndex t, bool b)
 {
-	assert(IsRailDepot(t));
+	assert_tile(IsRailDepot(t), t);
 	SB(_m[t].m5, 4, 1, (byte)b);
 }
 
@@ -289,14 +288,14 @@ static inline TrackBits GetDepotReservationTrackBits(TileIndex t)
 
 static inline SignalType GetSignalType(TileIndex t, Track track)
 {
-	assert(GetRailTileType(t) == RAIL_TILE_SIGNALS);
+	assert_tile(GetRailTileType(t) == RAIL_TILE_SIGNALS, t);
 	byte pos = (track == TRACK_LOWER || track == TRACK_RIGHT) ? 4 : 0;
 	return (SignalType)GB(_m[t].m2, pos, 3);
 }
 
 static inline void SetSignalType(TileIndex t, Track track, SignalType s)
 {
-	assert(GetRailTileType(t) == RAIL_TILE_SIGNALS);
+	assert_tile(GetRailTileType(t) == RAIL_TILE_SIGNALS, t);
 	byte pos = (track == TRACK_LOWER || track == TRACK_RIGHT) ? 4 : 0;
 	SB(_m[t].m2, pos, 3, s);
 	if (track == INVALID_TRACK) SB(_m[t].m2, 4, 3, s);
@@ -445,7 +444,7 @@ static inline bool HasSignalOnTrackdir(TileIndex tile, Trackdir trackdir)
 static inline SignalState GetSignalStateByTrackdir(TileIndex tile, Trackdir trackdir)
 {
 	assert(IsValidTrackdir(trackdir));
-	assert(HasSignalOnTrack(tile, TrackdirToTrack(trackdir)));
+	assert_tile(HasSignalOnTrack(tile, TrackdirToTrack(trackdir)), tile);
 	return GetSignalStates(tile) & SignalAlongTrackdir(trackdir) ?
 		SIGNAL_STATE_GREEN : SIGNAL_STATE_RED;
 }
@@ -485,8 +484,8 @@ static inline bool HasOnewaySignalBlockingTrackdir(TileIndex tile, Trackdir td)
 			!HasSignalOnTrackdir(tile, td) && IsOnewaySignal(tile, TrackdirToTrack(td))) {
 		return true;
 	}
-	if (IsTileType(tile, MP_TUNNELBRIDGE) && IsTunnelBridgeSignalSimulationExit(tile) &&
-			DiagDirToDiagTrackdir(GetTunnelBridgeDirection(tile)) == td) {
+	if (IsTileType(tile, MP_TUNNELBRIDGE) && IsTunnelBridgeSignalSimulationExitOnly(tile) &&
+			TrackdirEntersTunnelBridge(tile, td)) {
 		return true;
 	}
 	return false;
@@ -498,7 +497,7 @@ static inline bool HasOnewaySignalBlockingTrackdir(TileIndex tile, Trackdir td)
  */
 static inline bool IsRestrictedSignal(TileIndex tile)
 {
-	assert(GetRailTileType(tile) == RAIL_TILE_SIGNALS);
+	assert_tile(GetRailTileType(tile) == RAIL_TILE_SIGNALS, tile);
 	return (bool) GB(_m[tile].m2, 12, 1);
 }
 
@@ -508,7 +507,7 @@ static inline bool IsRestrictedSignal(TileIndex tile)
  */
 static inline void SetRestrictedSignal(TileIndex tile, bool is_restricted)
 {
-	assert(GetRailTileType(tile) == RAIL_TILE_SIGNALS);
+	assert_tile(GetRailTileType(tile) == RAIL_TILE_SIGNALS, tile);
 	SB(_m[tile].m2, 12, 1, is_restricted);
 }
 
@@ -556,11 +555,11 @@ static inline void MakeRailNormal(TileIndex t, Owner o, TrackBits b, RailType r)
 	SetTileOwner(t, o);
 	_m[t].m2 = 0;
 	_m[t].m3 = 0;
-	SetRailType(t, r);
 	_m[t].m4 = 0;
 	_m[t].m5 = RAIL_TILE_NORMAL << 6 | b;
 	SB(_me[t].m6, 2, 4, 0);
 	_me[t].m7 = 0;
+	_me[t].m8 = r;
 }
 
 
@@ -570,11 +569,11 @@ static inline void MakeRailDepot(TileIndex t, Owner o, DepotID did, DiagDirectio
 	SetTileOwner(t, o);
 	_m[t].m2 = did;
 	_m[t].m3 = 0;
-	SetRailType(t, r);
 	_m[t].m4 = 0;
 	_m[t].m5 = RAIL_TILE_DEPOT << 6 | d;
 	SB(_me[t].m6, 2, 4, 0);
 	_me[t].m7 = 0;
+	_me[t].m8 = r;
 }
 
 #endif /* RAIL_MAP_H */

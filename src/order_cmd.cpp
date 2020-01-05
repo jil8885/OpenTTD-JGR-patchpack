@@ -353,13 +353,13 @@ void Order::DeAllocExtraInfo()
 void CargoStationIDStackSet::FillNextStoppingStation(const Vehicle *v, const OrderList *o, const Order *first, uint hops)
 {
 	this->more.clear();
-	this->first = o->GetNextStoppingStation(v, ~0, first, hops);
-	if (this->first.cargo_mask != (uint32) ~0) {
-		uint32 have_cargoes = this->first.cargo_mask;
+	this->first = o->GetNextStoppingStation(v, ALL_CARGOTYPES, first, hops);
+	if (this->first.cargo_mask != ALL_CARGOTYPES) {
+		CargoTypes have_cargoes = this->first.cargo_mask;
 		do {
 			this->more.push_back(o->GetNextStoppingStation(v, ~have_cargoes, first, hops));
 			have_cargoes |= this->more.back().cargo_mask;
-		} while (have_cargoes != (uint32) ~0);
+		} while (have_cargoes != ALL_CARGOTYPES);
 	}
 }
 
@@ -466,7 +466,7 @@ VehicleOrderID OrderList::GetIndexOfOrder(const Order *order) const
  *         \li a non-trivial conditional order
  *         \li NULL  if the vehicle won't stop anymore.
  */
-const Order *OrderList::GetNextDecisionNode(const Order *next, uint hops, uint32 &cargo_mask) const
+const Order *OrderList::GetNextDecisionNode(const Order *next, uint hops, CargoTypes &cargo_mask) const
 {
 	assert(cargo_mask != 0);
 
@@ -512,14 +512,14 @@ const Order *OrderList::GetNextDecisionNode(const Order *next, uint hops, uint32
 /**
  * Recursively determine the next deterministic station to stop at.
  * @param v The vehicle we're looking at.
- * @param uint32 cargo_mask Bit-set of the cargo IDs of interest.
+ * @param CargoTypes cargo_mask Bit-set of the cargo IDs of interest.
  * @param first Order to start searching at or NULL to start at cur_implicit_order_index + 1.
  * @param hops Number of orders we have already looked at.
  * @return A CargoMaskedStationIDStack of the cargo mask the result is valid for, and the next stoppping station or INVALID_STATION.
  * @pre The vehicle is currently loading and v->last_station_visited is meaningful.
  * @note This function may draw a random number. Don't use it from the GUI.
  */
-CargoMaskedStationIDStack OrderList::GetNextStoppingStation(const Vehicle *v, uint32 cargo_mask, const Order *first, uint hops) const
+CargoMaskedStationIDStack OrderList::GetNextStoppingStation(const Vehicle *v, CargoTypes cargo_mask, const Order *first, uint hops) const
 {
 	assert(cargo_mask != 0);
 
@@ -960,7 +960,7 @@ CommandCost CmdInsertOrder(TileIndex tile, DoCommandFlag flags, uint32 p1, uint3
 
 			if (new_order.GetNonStopType() != ONSF_STOP_EVERYWHERE && !v->IsGroundVehicle()) return CMD_ERROR;
 			if (new_order.GetDepotOrderType() & ~(ODTFB_PART_OF_ORDERS | ((new_order.GetDepotOrderType() & ODTFB_PART_OF_ORDERS) != 0 ? ODTFB_SERVICE : 0))) return CMD_ERROR;
-			if (new_order.GetDepotActionType() & ~(ODATFB_HALT | ODATFB_NEAREST_DEPOT)) return CMD_ERROR;
+			if (new_order.GetDepotActionType() & ~(ODATFB_HALT | ODATFB_SELL | ODATFB_NEAREST_DEPOT)) return CMD_ERROR;
 			if ((new_order.GetDepotOrderType() & ODTFB_SERVICE) && (new_order.GetDepotActionType() & ODATFB_HALT)) return CMD_ERROR;
 			break;
 		}
@@ -1671,21 +1671,28 @@ CommandCost CmdModifyOrder(TileIndex tile, DoCommandFlag flags, uint32 p1, uint3
 				break;
 
 			case MOF_DEPOT_ACTION: {
+				OrderDepotActionFlags base_order_action_type = order->GetDepotActionType() & ~(ODATFB_HALT | ODATFB_SELL);
 				switch (data) {
 					case DA_ALWAYS_GO:
 						order->SetDepotOrderType((OrderDepotTypeFlags)(order->GetDepotOrderType() & ~ODTFB_SERVICE));
-						order->SetDepotActionType((OrderDepotActionFlags)(order->GetDepotActionType() & ~ODATFB_HALT));
+						order->SetDepotActionType((OrderDepotActionFlags)(base_order_action_type));
 						break;
 
 					case DA_SERVICE:
 						order->SetDepotOrderType((OrderDepotTypeFlags)(order->GetDepotOrderType() | ODTFB_SERVICE));
-						order->SetDepotActionType((OrderDepotActionFlags)(order->GetDepotActionType() & ~ODATFB_HALT));
+						order->SetDepotActionType((OrderDepotActionFlags)(base_order_action_type));
 						order->SetRefit(CT_NO_REFIT);
 						break;
 
 					case DA_STOP:
 						order->SetDepotOrderType((OrderDepotTypeFlags)(order->GetDepotOrderType() & ~ODTFB_SERVICE));
-						order->SetDepotActionType((OrderDepotActionFlags)(order->GetDepotActionType() | ODATFB_HALT));
+						order->SetDepotActionType((OrderDepotActionFlags)(base_order_action_type | ODATFB_HALT));
+						order->SetRefit(CT_NO_REFIT);
+						break;
+
+					case DA_SELL:
+						order->SetDepotOrderType((OrderDepotTypeFlags)(order->GetDepotOrderType() & ~ODTFB_SERVICE));
+						order->SetDepotActionType((OrderDepotActionFlags)(base_order_action_type | ODATFB_HALT | ODATFB_SELL));
 						order->SetRefit(CT_NO_REFIT);
 						break;
 
@@ -1781,9 +1788,25 @@ CommandCost CmdModifyOrder(TileIndex tile, DoCommandFlag flags, uint32 p1, uint3
 			 * when this function is called.
 			 */
 			if (sel_ord == u->cur_real_order_index &&
-					(u->current_order.IsType(OT_GOTO_STATION) || u->current_order.IsAnyLoadingType()) &&
-					u->current_order.GetLoadType() != order->GetLoadType()) {
-				u->current_order.SetLoadType(order->GetLoadType());
+					(u->current_order.IsType(OT_GOTO_STATION) || u->current_order.IsAnyLoadingType())) {
+				if (u->current_order.GetLoadType() != order->GetLoadType()) {
+					u->current_order.SetLoadType(order->GetLoadType());
+				}
+				if (u->current_order.GetUnloadType() != order->GetUnloadType()) {
+					u->current_order.SetUnloadType(order->GetUnloadType());
+				}
+				switch (mof) {
+					case MOF_CARGO_TYPE_UNLOAD:
+						u->current_order.SetUnloadType((OrderUnloadFlags)data, cargo_id);
+						break;
+
+					case MOF_CARGO_TYPE_LOAD:
+						u->current_order.SetLoadType((OrderLoadFlags)data, cargo_id);
+						break;
+
+					default:
+						break;
+				}
 			}
 			InvalidateVehicleOrder(u, VIWD_MODIFY_ORDERS);
 		}
@@ -2079,7 +2102,7 @@ CommandCost CmdOrderRefit(TileIndex tile, DoCommandFlag flags, uint32 p1, uint32
 		/* Make the depot order an 'always go' order. */
 		if (cargo != CT_NO_REFIT && order->IsType(OT_GOTO_DEPOT)) {
 			order->SetDepotOrderType((OrderDepotTypeFlags)(order->GetDepotOrderType() & ~ODTFB_SERVICE));
-			order->SetDepotActionType((OrderDepotActionFlags)(order->GetDepotActionType() & ~ODATFB_HALT));
+			order->SetDepotActionType((OrderDepotActionFlags)(order->GetDepotActionType() & ~(ODATFB_HALT | ODATFB_SELL)));
 		}
 
 		for (Vehicle *u = v->FirstShared(); u != NULL; u = u->NextShared()) {

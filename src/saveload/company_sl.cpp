@@ -202,13 +202,12 @@ void AfterLoadCompanyStats()
 					/* Count each tunnel/bridge TUNNELBRIDGE_TRACKBIT_FACTOR times to simulate
 					 * the higher structural maintenance needs, and don't forget the end tiles. */
 					const uint middle_len = GetTunnelBridgeLength(tile, other_end) * TUNNELBRIDGE_TRACKBIT_FACTOR;
-					const uint len = middle_len + (2 * TUNNELBRIDGE_TRACKBIT_FACTOR);
 
 					switch (GetTunnelBridgeTransportType(tile)) {
 						case TRANSPORT_RAIL:
 							c = Company::GetIfValid(GetTileOwner(tile));
 							if (c != NULL) {
-								c->infrastructure.rail[GetRailType(tile)] += len;
+								c->infrastructure.rail[GetRailType(tile)] += middle_len + GetTunnelBridgeHeadOnlyRailInfrastructureCount(tile) + GetTunnelBridgeHeadOnlyRailInfrastructureCount(other_end);
 								if (IsTunnelBridgeWithSignalSimulation(tile)) {
 									c->infrastructure.signal += GetTunnelBridgeSignalSimulationSignalCount(tile, other_end);
 								}
@@ -222,7 +221,7 @@ void AfterLoadCompanyStats()
 
 						case TRANSPORT_WATER:
 							c = Company::GetIfValid(GetTileOwner(tile));
-							if (c != NULL) c->infrastructure.water += len;
+							if (c != NULL) c->infrastructure.water += middle_len + (2 * TUNNELBRIDGE_TRACKBIT_FACTOR);
 							break;
 
 						default:
@@ -355,7 +354,8 @@ static const SaveLoad _company_economy_desc[] = {
 	SLE_CONDVAR(CompanyEconomyEntry, company_value,       SLE_INT64,                  2, SL_MAX_VERSION),
 
 	SLE_CONDVAR(CompanyEconomyEntry, delivered_cargo[NUM_CARGO - 1], SLE_INT32,       0, 169),
-	SLE_CONDARR(CompanyEconomyEntry, delivered_cargo,     SLE_UINT32, NUM_CARGO,    170, SL_MAX_VERSION),
+	SLE_CONDARR(CompanyEconomyEntry, delivered_cargo,     SLE_UINT32, 32,           170, 198),
+	SLE_CONDARR(CompanyEconomyEntry, delivered_cargo,     SLE_UINT32, NUM_CARGO,    199, SL_MAX_VERSION),
 	    SLE_VAR(CompanyEconomyEntry, performance_history, SLE_INT32),
 
 	SLE_END()
@@ -511,7 +511,6 @@ static void Check_PLYR()
 	int index;
 	while ((index = SlIterateArray()) != -1) {
 		CompanyProperties *cprops = new CompanyProperties();
-		memset(cprops, 0, sizeof(*cprops));
 		SaveLoad_PLYR_common(NULL, cprops);
 
 		/* We do not load old custom names */

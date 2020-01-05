@@ -47,7 +47,7 @@ std::vector<uint32> _sl_xv_discardable_chunk_ids;           ///< list of chunks 
 static const uint32 _sl_xv_slxi_chunk_version = 0;          ///< current version os SLXI chunk
 
 const SlxiSubChunkInfo _sl_xv_sub_chunk_infos[] = {
-	{ XSLFI_TRACE_RESTRICT,         XSCF_NULL,                8,   8, "tracerestrict",             NULL, NULL, "TRRM,TRRP,TRRS" },
+	{ XSLFI_TRACE_RESTRICT,         XSCF_NULL,                9,   9, "tracerestrict",             NULL, NULL, "TRRM,TRRP,TRRS" },
 	{ XSLFI_TRACE_RESTRICT_OWNER,   XSCF_NULL,                1,   1, "tracerestrict_owner",       NULL, NULL, NULL        },
 	{ XSLFI_TRACE_RESTRICT_ORDRCND, XSCF_NULL,                1,   1, "tracerestrict_order_cond",  NULL, NULL, NULL        },
 	{ XSLFI_PROG_SIGS,              XSCF_NULL,                1,   1, "programmable_signals",      NULL, NULL, "SPRG"      },
@@ -56,7 +56,7 @@ const SlxiSubChunkInfo _sl_xv_sub_chunk_infos[] = {
 	{ XSLFI_DEPARTURE_BOARDS,       XSCF_IGNORABLE_UNKNOWN,   1,   1, "departure_boards",          NULL, NULL, NULL        },
 	{ XSLFI_TIMETABLES_START_TICKS, XSCF_NULL,                2,   2, "timetable_start_ticks",     NULL, NULL, NULL        },
 	{ XSLFI_TOWN_CARGO_ADJ,         XSCF_IGNORABLE_UNKNOWN,   2,   2, "town_cargo_adj",            NULL, NULL, NULL        },
-	{ XSLFI_SIG_TUNNEL_BRIDGE,      XSCF_NULL,                5,   5, "signal_tunnel_bridge",      NULL, NULL, "XBSS"      },
+	{ XSLFI_SIG_TUNNEL_BRIDGE,      XSCF_NULL,                7,   7, "signal_tunnel_bridge",      NULL, NULL, "XBSS"      },
 	{ XSLFI_IMPROVED_BREAKDOWNS,    XSCF_NULL,                6,   6, "improved_breakdowns",       NULL, NULL, NULL        },
 	{ XSLFI_TT_WAIT_IN_DEPOT,       XSCF_NULL,                1,   1, "tt_wait_in_depot",          NULL, NULL, NULL        },
 	{ XSLFI_AUTO_TIMETABLE,         XSCF_NULL,                4,   4, "auto_timetables",           NULL, NULL, NULL        },
@@ -71,21 +71,22 @@ const SlxiSubChunkInfo _sl_xv_sub_chunk_infos[] = {
 	{ XSLFI_VEH_LIFETIME_PROFIT,    XSCF_NULL,                1,   1, "veh_lifetime_profit",       NULL, NULL, NULL        },
 	{ XSLFI_LINKGRAPH_DAY_SCALE,    XSCF_NULL,                1,   1, "linkgraph_day_scale",       NULL, NULL, NULL        },
 	{ XSLFI_TEMPLATE_REPLACEMENT,   XSCF_NULL,                4,   4, "template_replacement",      NULL, NULL, "TRPL,TMPL" },
-	{ XSLFI_MORE_RAIL_TYPES,        XSCF_NULL,                1,   1, "more_rail_types",           NULL, NULL, NULL        },
-	{ XSLFI_CARGO_TYPE_ORDERS,      XSCF_NULL,                2,   2, "cargo_type_orders",         NULL, NULL, "ORDX,VEOX" },
+	{ XSLFI_MORE_RAIL_TYPES,        XSCF_NULL,                0,   1, "more_rail_types",           NULL, NULL, NULL        },
+	{ XSLFI_CARGO_TYPE_ORDERS,      XSCF_NULL,                3,   3, "cargo_type_orders",         NULL, NULL, "ORDX,VEOX" },
 	{ XSLFI_EXTENDED_GAMELOG,       XSCF_NULL,                1,   1, "extended_gamelog",          NULL, NULL, NULL        },
 	{ XSLFI_STATION_CATCHMENT_INC,  XSCF_NULL,                1,   1, "station_catchment_inc",     NULL, NULL, NULL        },
-	{ XSLFI_CUSTOM_BRIDGE_HEADS,    XSCF_NULL,                1,   1, "custom_bridge_heads",       NULL, NULL, NULL        },
+	{ XSLFI_CUSTOM_BRIDGE_HEADS,    XSCF_NULL,                2,   2, "custom_bridge_heads",       NULL, NULL, NULL        },
 	{ XSLFI_CHUNNEL,                XSCF_NULL,                1,   1, "chunnel",                   NULL, NULL, "TUNN"      },
 	{ XSLFI_SCHEDULED_DISPATCH,     XSCF_NULL,                1,   1, "scheduled_dispatch",        NULL, NULL, NULL        },
 	{ XSLFI_MORE_TOWN_GROWTH_RATES, XSCF_NULL,                1,   1, "more_town_growth_rates",    NULL, NULL, NULL        },
 	{ XSLFI_MULTIPLE_DOCKS,         XSCF_NULL,                1,   1, "multiple_docks",            NULL, NULL, "DOCK"      },
-	{ XSLFI_TIMETABLE_EXTRA,        XSCF_NULL,                1,   1, "timetable_extra",           NULL, NULL, "ORDX"      },
+	{ XSLFI_TIMETABLE_EXTRA,        XSCF_NULL,                2,   2, "timetable_extra",           NULL, NULL, "ORDX"      },
 	{ XSLFI_TRAIN_FLAGS_EXTRA,      XSCF_NULL,                1,   1, "train_flags_extra",         NULL, NULL, NULL        },
 	{ XSLFI_TRAIN_THROUGH_LOAD,     XSCF_NULL,                2,   2, "train_through_load",        NULL, NULL, NULL        },
 	{ XSLFI_ORDER_EXTRA_DATA,       XSCF_NULL,                1,   1, "order_extra_data",          NULL, NULL, NULL        },
-	{ XSLFI_WHOLE_MAP_CHUNK,        XSCF_NULL,                1,   1, "whole_map_chunk",           NULL, NULL, "WMAP"      },
+	{ XSLFI_WHOLE_MAP_CHUNK,        XSCF_NULL,                2,   2, "whole_map_chunk",           NULL, NULL, "WMAP"      },
 	{ XSLFI_ST_LAST_VEH_TYPE,       XSCF_NULL,                1,   1, "station_last_veh_type",     NULL, NULL, NULL        },
+	{ XSLFI_SELL_AT_DEPOT_ORDER,    XSCF_NULL,                1,   1, "sell_at_depot_order",       NULL, NULL, NULL        },
 	{ XSLFI_NULL, XSCF_NULL, 0, 0, NULL, NULL, NULL, NULL },// This is the end marker
 };
 

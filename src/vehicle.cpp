@@ -54,6 +54,7 @@
 #include "tracerestrict.h"
 #include "linkgraph/linkgraph.h"
 #include "linkgraph/refresh.h"
+#include "framerate_type.h"
 #include "blitter/factory.hpp"
 #include "tbtr_template_vehicle_func.h"
 #include "string_func.h"
@@ -101,6 +102,7 @@ VehiclePool _vehicle_pool("Vehicle");
 INSTANTIATE_POOL_METHODS(Vehicle)
 
 static btree::btree_set<Vehicle *> _vehicles_to_pay_repair;
+static btree::btree_set<Vehicle *> _vehicles_to_sell;
 
 /**
  * Determine shared bounds of all sprites.
@@ -639,11 +641,23 @@ CommandCost EnsureNoRoadVehicleOnGround(TileIndex tile)
 	return CommandCost();
 }
 
+struct GetVehicleTunnelBridgeProcData {
+	const Vehicle *v;
+	TileIndex t;
+	bool across_only;
+};
+
 /** Procedure called for every vehicle found in tunnel/bridge in the hash map */
 static Vehicle *GetVehicleTunnelBridgeProc(Vehicle *v, void *data)
 {
+	const GetVehicleTunnelBridgeProcData *info = (GetVehicleTunnelBridgeProcData*) data;
 	if (v->type != VEH_TRAIN && v->type != VEH_ROAD && v->type != VEH_SHIP) return NULL;
-	if (v == (const Vehicle *)data) return NULL;
+	if (v == info->v) return NULL;
+
+	if (v->type == VEH_TRAIN && info->across_only && IsBridge(info->t)) {
+		TrackBits vehicle_track = Train::From(v)->track;
+		if (!(vehicle_track & TRACK_BIT_WORMHOLE) && !(GetAcrossBridgePossibleTrackBits(info->t) & vehicle_track)) return NULL;
+	}
 
 	return v;
 }
@@ -653,16 +667,24 @@ static Vehicle *GetVehicleTunnelBridgeProc(Vehicle *v, void *data)
  * @param tile first end
  * @param endtile second end
  * @param ignore Ignore this vehicle when searching
+ * @param across_only Only find vehicles which are passing across the bridge/tunnel or on connecting bridge head track pieces
  * @return Succeeded command (if tunnel/bridge is free) or failed command (if a vehicle is using the tunnel/bridge).
  */
-CommandCost TunnelBridgeIsFree(TileIndex tile, TileIndex endtile, const Vehicle *ignore)
+CommandCost TunnelBridgeIsFree(TileIndex tile, TileIndex endtile, const Vehicle *ignore, bool across_only)
 {
 	/* Value v is not safe in MP games, however, it is used to generate a local
 	 * error message only (which may be different for different machines).
 	 * Such a message does not affect MP synchronisation.
 	 */
-	Vehicle *v = VehicleFromPos(tile, const_cast<Vehicle *>(ignore), &GetVehicleTunnelBridgeProc, true);
-	if (v == NULL) v = VehicleFromPos(endtile, const_cast<Vehicle *>(ignore), &GetVehicleTunnelBridgeProc, true);
+	GetVehicleTunnelBridgeProcData data;
+	data.v = ignore;
+	data.t = tile;
+	data.across_only = across_only;
+	Vehicle *v = VehicleFromPos(tile, &data, &GetVehicleTunnelBridgeProc, true);
+	if (v == NULL) {
+		data.t = endtile;
+		v = VehicleFromPos(endtile, &data, &GetVehicleTunnelBridgeProc, true);
+	}
 
 	if (v != NULL) return_cmd_error(STR_ERROR_TRAIN_IN_THE_WAY + v->type);
 	return CommandCost();
@@ -675,6 +697,12 @@ static Vehicle *EnsureNoTrainOnTrackProc(Vehicle *v, void *data)
 	if (v->type != VEH_TRAIN) return NULL;
 
 	Train *t = Train::From(v);
+	if (rail_bits & TRACK_BIT_WORMHOLE) {
+		if (t->track & TRACK_BIT_WORMHOLE) return v;
+		rail_bits &= ~TRACK_BIT_WORMHOLE;
+	} else if (t->track & TRACK_BIT_WORMHOLE) {
+		return NULL;
+	}
 	if ((t->track != rail_bits) && !TracksOverlap(t->track | rail_bits)) return NULL;
 
 	return v;
@@ -1098,14 +1126,20 @@ void CallVehicleTicks()
 	_vehicles_to_autoreplace.Clear();
 	_vehicles_to_templatereplace.Clear();
 	_vehicles_to_pay_repair.clear();
+	_vehicles_to_sell.clear();
 
 	if (_tick_skip_counter == 0) RunVehicleDayProc();
 
 	{
+		PerformanceMeasurer framerate(PFE_GL_ECONOMY);
 		Station *st = nullptr;
 		SCOPE_INFO_FMT([&st], "CallVehicleTicks: LoadUnloadStation: %s", scope_dumper().StationInfo(st));
 		FOR_ALL_STATIONS(st) LoadUnloadStation(st);
 	}
+	PerformanceAccumulator::Reset(PFE_GL_TRAINS);
+	PerformanceAccumulator::Reset(PFE_GL_ROADVEHS);
+	PerformanceAccumulator::Reset(PFE_GL_SHIPS);
+	PerformanceAccumulator::Reset(PFE_GL_AIRCRAFT);
 
 	Vehicle *v = NULL;
 	SCOPE_INFO_FMT([&v], "CallVehicleTicks: %s", scope_dumper().VehicleInfo(v));
@@ -1187,6 +1221,34 @@ void CallVehicleTicks()
 		}
 	}
 	v = NULL;
+
+	/* do Template Replacement */
+	Backup<CompanyByte> sell_cur_company(_current_company, FILE_LINE);
+	for (Vehicle *v : _vehicles_to_sell) {
+		SCOPE_INFO_FMT([v], "CallVehicleTicks: sell: %s", scope_dumper().VehicleInfo(v));
+		Train *t = (v->type == VEH_TRAIN) ? Train::From(v) : nullptr;
+
+		sell_cur_company.Change(v->owner);
+
+		int x = v->x_pos;
+		int y = v->y_pos;
+		int z = v->z_pos;
+
+		CommandCost cost = DoCommand(v->tile, v->index | (1 << 20), 0, DC_EXEC, GetCmdSellVeh(v));
+
+		if (!cost.Succeeded()) continue;
+
+		if (IsLocalCompany() && cost.Succeeded()) {
+			if (cost.GetCost() != 0) {
+				ShowCostOrIncomeAnimation(x, y, z, cost.GetCost());
+			}
+		}
+
+		_vehicles_to_pay_repair.erase(v);
+		if (t) _vehicles_to_templatereplace.Erase(t);
+		_vehicles_to_autoreplace.Erase(v);
+	}
+	sell_cur_company.Restore();
 
 	/* do Template Replacement */
 	Backup<CompanyByte> tmpl_cur_company(_current_company, FILE_LINE);
@@ -1995,6 +2057,11 @@ void VehicleEnterDepot(Vehicle *v)
 			return;
 		}
 
+		if (v->current_order.GetDepotActionType() & ODATFB_SELL) {
+			_vehicles_to_sell.insert(v);
+			return;
+		}
+
 		if (v->current_order.IsRefit()) {
 			Backup<CompanyByte> cur_company(_current_company, v->owner, FILE_LINE);
 			CommandCost cost = DoCommand(v->tile, v->index, v->current_order.GetRefitCargo() | 0xFF << 8, DC_EXEC, GetCmdRefitVeh(v));
@@ -2542,9 +2609,9 @@ static void VehicleIncreaseStats(const Vehicle *front)
 void Vehicle::BeginLoading()
 {
 	if (this->type == VEH_TRAIN) {
-		assert(IsTileType(Train::From(this)->GetStationLoadingVehicle()->tile, MP_STATION));
+		assert_tile(IsTileType(Train::From(this)->GetStationLoadingVehicle()->tile, MP_STATION), Train::From(this)->GetStationLoadingVehicle()->tile);
 	} else {
-		assert(IsTileType(this->tile, MP_STATION) || this->type == VEH_SHIP);
+		assert_tile(IsTileType(this->tile, MP_STATION) || this->type == VEH_SHIP, this->tile);
 	}
 
 	bool no_load_prepare = false;
@@ -2686,12 +2753,12 @@ void Vehicle::CancelReservation(StationID next, Station *st)
 	}
 }
 
-uint32 Vehicle::GetLastLoadingStationValidCargoMask() const
+CargoTypes Vehicle::GetLastLoadingStationValidCargoMask() const
 {
 	if (!HasBit(this->vehicle_flags, VF_LAST_LOAD_ST_SEP)) {
-		return (this->last_loading_station != INVALID_STATION) ? ~0 : 0;
+		return (this->last_loading_station != INVALID_STATION) ? ALL_CARGOTYPES : 0;
 	} else {
-		uint32 cargo_mask = 0;
+		CargoTypes cargo_mask = 0;
 		for (const Vehicle *u = this; u != NULL; u = u->Next()) {
 			if (u->cargo_type < NUM_CARGO && u->last_loading_station != INVALID_STATION) {
 				SetBit(cargo_mask, u->cargo_type);
@@ -2726,11 +2793,11 @@ void Vehicle::LeaveStation()
 	/* Only update the timetable if the vehicle was supposed to stop here. */
 	if (this->current_order.GetNonStopType() != ONSF_STOP_EVERYWHERE) UpdateVehicleTimetable(this, false);
 
-	uint32 cargoes_can_load_unload = this->current_order.FilterLoadUnloadTypeCargoMask([&](const Order *o, CargoID cargo) {
+	CargoTypes cargoes_can_load_unload = this->current_order.FilterLoadUnloadTypeCargoMask([&](const Order *o, CargoID cargo) {
 		return ((o->GetCargoLoadType(cargo) & OLFB_NO_LOAD) == 0) || ((o->GetCargoUnloadType(cargo) & OUFB_NO_UNLOAD) == 0);
 	});
-	uint32 has_cargo_mask = this->GetLastLoadingStationValidCargoMask();
-	uint32 cargoes_can_leave_with_cargo = FilterCargoMask([&](CargoID cargo) {
+	CargoTypes has_cargo_mask = this->GetLastLoadingStationValidCargoMask();
+	CargoTypes cargoes_can_leave_with_cargo = FilterCargoMask([&](CargoID cargo) {
 		return this->current_order.CanLeaveWithCargo(HasBit(has_cargo_mask, cargo), cargo);
 	}, cargoes_can_load_unload);
 
@@ -2743,7 +2810,7 @@ void Vehicle::LeaveStation()
 			LinkRefresher::Run(this, true, false, cargoes_can_leave_with_cargo);
 		}
 
-		if (cargoes_can_leave_with_cargo == (uint32) ~0) {
+		if (cargoes_can_leave_with_cargo == ALL_CARGOTYPES) {
 			/* can leave with all cargoes */
 
 			/* if the vehicle could load here or could stop with cargo loaded set the last loading station */
@@ -3001,13 +3068,14 @@ CommandCost Vehicle::SendToDepot(DoCommandFlag flags, DepotCommand command, Tile
 
 	if (this->current_order.IsType(OT_GOTO_DEPOT) && !(command & DEPOT_SPECIFIC)) {
 		bool halt_in_depot = (this->current_order.GetDepotActionType() & ODATFB_HALT) != 0;
-		if (!!(command & DEPOT_SERVICE) == halt_in_depot) {
-			/* We called with a different DEPOT_SERVICE setting.
+		bool sell_in_depot = (this->current_order.GetDepotActionType() & ODATFB_SELL) != 0;
+		if (!!(command & DEPOT_SERVICE) == halt_in_depot || !!(command & DEPOT_SELL) != sell_in_depot) {
+			/* We called with a different DEPOT_SERVICE or DEPOT_SELL setting.
 			 * Now we change the setting to apply the new one and let the vehicle head for the same depot.
 			 * Note: the if is (true for requesting service == true for ordered to stop in depot)          */
 			if (flags & DC_EXEC) {
 				if (!(this->current_order.GetDepotOrderType() & ODTFB_BREAKDOWN)) this->current_order.SetDepotOrderType(ODTF_MANUAL);
-				this->current_order.SetDepotActionType(halt_in_depot ? ODATF_SERVICE_ONLY : ODATFB_HALT);
+				this->current_order.SetDepotActionType((command & DEPOT_SELL) ? ODATFB_HALT | ODATFB_SELL : ((command & DEPOT_SERVICE) ? ODATF_SERVICE_ONLY : ODATFB_HALT));
 				this->ClearSeparation();
 				if (HasBit(this->vehicle_flags, VF_TIMETABLE_SEPARATION)) ClrBit(this->vehicle_flags, VF_TIMETABLE_STARTED);
 				SetWindowWidgetDirty(WC_VEHICLE_VIEW, this->index, WID_VV_START_STOP);
@@ -3046,7 +3114,11 @@ CommandCost Vehicle::SendToDepot(DoCommandFlag flags, DepotCommand command, Tile
 
 		this->dest_tile = location;
 		this->current_order.MakeGoToDepot(destination, ODTF_MANUAL);
-		if (!(command & DEPOT_SERVICE)) this->current_order.SetDepotActionType(ODATFB_HALT);
+		if (command & DEPOT_SELL) {
+			this->current_order.SetDepotActionType(ODATFB_HALT | ODATFB_SELL);
+		} else if (!(command & DEPOT_SERVICE)) {
+			this->current_order.SetDepotActionType(ODATFB_HALT);
+		}
 		SetWindowWidgetDirty(WC_VEHICLE_VIEW, this->index, WID_VV_START_STOP);
 
 		/* If there is no depot in front, reverse automatically (trains only) */

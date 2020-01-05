@@ -45,6 +45,7 @@
 #include "build_confirmation_func.h"
 
 #include "table/strings.h"
+#include "framerate_type.h"
 
 #include "safeguards.h"
 
@@ -3369,6 +3370,9 @@ void InputLoop()
  */
 void UpdateWindows()
 {
+	PerformanceMeasurer framerate(PFE_DRAWING);
+	PerformanceAccumulator::Reset(PFE_DRAWWORLD);
+
 	Window *w;
 
 	_window_update_number++;

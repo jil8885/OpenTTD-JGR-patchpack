@@ -60,6 +60,7 @@
 #include "../disaster_vehicle.h"
 #include "../tracerestrict.h"
 #include "../tunnel_map.h"
+#include "../bridge_signal_map.h"
 
 
 #include "saveload_internal.h"
@@ -1371,6 +1372,67 @@ bool AfterLoadGame()
 		}
 	}
 
+	/* Railtype moved from m3 to m8 in version 200. */
+	if (IsSavegameVersionBefore(200)) {
+		const bool has_extra_bit = SlXvIsFeaturePresent(XSLFI_MORE_RAIL_TYPES, 1, 1);
+		auto update_railtype = [&](TileIndex t) {
+			uint rt = GB(_m[t].m3, 0, 4);
+			if (has_extra_bit) rt |= (GB(_m[t].m1, 7, 1) << 4);
+			SetRailType(t, (RailType)rt);
+		};
+		for (TileIndex t = 0; t < map_size; t++) {
+			switch (GetTileType(t)) {
+				case MP_RAILWAY:
+					update_railtype(t);
+					break;
+
+				case MP_ROAD:
+					if (IsLevelCrossing(t)) {
+						update_railtype(t);
+					}
+					break;
+
+				case MP_STATION:
+					if (HasStationRail(t)) {
+						update_railtype(t);
+					}
+					break;
+
+				case MP_TUNNELBRIDGE:
+					if (GetTunnelBridgeTransportType(t) == TRANSPORT_RAIL) {
+						update_railtype(t);
+					}
+					break;
+
+				default:
+					break;
+			}
+		}
+	}
+
+	if (SlXvIsFeaturePresent(XSLFI_SIG_TUNNEL_BRIDGE, 1, 6)) {
+		/* m2 signal state bit allocation has shrunk */
+		for (TileIndex t = 0; t < map_size; t++) {
+			if (IsTileType(t, MP_TUNNELBRIDGE) && GetTunnelBridgeTransportType(t) == TRANSPORT_RAIL && IsBridge(t) && IsTunnelBridgeSignalSimulationEntrance(t)) {
+				extern void ShiftBridgeEntranceSimulatedSignalsExtended(TileIndex t, int shift, uint64 in);
+				const uint shift = 15 - BRIDGE_M2_SIGNAL_STATE_COUNT;
+				ShiftBridgeEntranceSimulatedSignalsExtended(t, shift, GB(_m[t].m2, BRIDGE_M2_SIGNAL_STATE_COUNT, shift));
+				SB(_m[t].m2, 0, 15, GB(_m[t].m2, 0, 15) << shift);
+			}
+		}
+	}
+
+	if (!SlXvIsFeaturePresent(XSLFI_CUSTOM_BRIDGE_HEADS, 2)) {
+		/* change map bits for rail bridge heads */
+		for (TileIndex t = 0; t < map_size; t++) {
+			if (IsBridgeTile(t) && GetTunnelBridgeTransportType(t) == TRANSPORT_RAIL) {
+				SetCustomBridgeHeadTrackBits(t, DiagDirToDiagTrackBits(GetTunnelBridgeDirection(t)));
+				SetBridgeReservationTrackBits(t, HasBit(_m[t].m5, 4) ? DiagDirToDiagTrackBits(GetTunnelBridgeDirection(t)) : TRACK_BIT_NONE);
+				ClrBit(_m[t].m5, 4);
+			}
+		}
+	}
+
 	/* Elrails got added in rev 24 */
 	if (IsSavegameVersionBefore(24)) {
 		RailType min_rail = RAILTYPE_ELECTRIC;
@@ -2108,7 +2170,7 @@ bool AfterLoadGame()
 					break;
 
 				case MP_TUNNELBRIDGE: // Clear PBS reservation on tunnels/bridges
-					if (GetTunnelBridgeTransportType(t) == TRANSPORT_RAIL) SetTunnelBridgeReservation(t, false);
+					if (GetTunnelBridgeTransportType(t) == TRANSPORT_RAIL) UnreserveAcrossRailTunnelBridge(t);
 					break;
 
 				default: break;
@@ -2240,7 +2302,7 @@ bool AfterLoadGame()
 				} else {
 					/* We're at an offset, so get the ID from our "root". */
 					TileIndex northern_tile = t - TileXY(GB(offset, 0, 4), GB(offset, 4, 4));
-					assert(IsTileType(northern_tile, MP_OBJECT));
+					assert_tile(IsTileType(northern_tile, MP_OBJECT), northern_tile);
 					_m[t].m2 = _m[northern_tile].m2;
 				}
 			}
@@ -3351,7 +3413,7 @@ bool AfterLoadGame()
 					/* signalled tunnel entrance */
 					SignalState state = HasBit(_m[t].m5, 6) ? SIGNAL_STATE_RED : SIGNAL_STATE_GREEN;
 					ClrBit(_m[t].m5, 6);
-					SetTunnelBridgeSignalState(t, state);
+					SetTunnelBridgeEntranceSignalState(t, state);
 				}
 			}
 		}
@@ -3364,6 +3426,14 @@ bool AfterLoadGame()
 			if (IsTileType(tile, MP_TUNNELBRIDGE) && GetTunnelBridgeTransportType(tile) == TRANSPORT_RAIL && IsTunnelBridgeWithSignalSimulation(tile)) {
 				t->tunnel_bridge_signal_num = t->load_unload_ticks;
 				t->load_unload_ticks = 0;
+			}
+		}
+	}
+	if (SlXvIsFeaturePresent(XSLFI_SIG_TUNNEL_BRIDGE, 1, 5)) {
+		/* entrance and exit signal red/green states now have separate bits */
+		for (TileIndex t = 0; t < map_size; t++) {
+			if (IsTileType(t, MP_TUNNELBRIDGE) && GetTunnelBridgeTransportType(t) == TRANSPORT_RAIL && IsTunnelBridgeSignalSimulationExit(t)) {
+				SetTunnelBridgeExitSignalState(t, HasBit(_me[t].m6, 0) ? SIGNAL_STATE_GREEN : SIGNAL_STATE_RED);
 			}
 		}
 	}
@@ -3397,26 +3467,12 @@ bool AfterLoadGame()
 		FOR_ALL_VEHICLES(v) v->profit_lifetime = 0;
 	}
 
-	// Before this version we didn't store the 5th bit of the tracktype here.
-	// So set it to 0 just in case there was garbage in there.
-	if (SlXvIsFeatureMissing(XSLFI_MORE_RAIL_TYPES)) {
-		for (TileIndex t = 0; t < map_size; t++) {
-			if (GetTileType(t) == MP_RAILWAY ||
-					IsLevelCrossingTile(t) ||
-					IsRailStationTile(t) ||
-					IsRailWaypointTile(t) ||
-					IsRailTunnelBridgeTile(t)) {
-				ClrBit(_m[t].m1, 7);
-			}
-		}
-	}
-
 	if (SlXvIsFeaturePresent(XSLFI_AUTO_TIMETABLE, 1, 3)) {
 		Vehicle *v;
 		FOR_ALL_VEHICLES(v) SB(v->vehicle_flags, VF_TIMETABLE_SEPARATION, 1, _settings_game.order.old_timetable_separation);
 	}
 
-	/* Set lifetime vehicle profit to 0 if lifetime profit feature is missing */
+	/* Set 0.1 increment town cargo scale factor setting from old 1 increment setting */
 	if (!SlXvIsFeaturePresent(XSLFI_TOWN_CARGO_ADJ, 2)) {
 		_settings_game.economy.town_cargo_scale_factor = _settings_game.economy.old_town_cargo_factor * 10;
 	}

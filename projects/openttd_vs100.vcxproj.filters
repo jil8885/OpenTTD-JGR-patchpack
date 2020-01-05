@@ -660,6 +660,9 @@
     <ClInclude Include="..\src\fontdetection.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\framerate_type.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="..\src\base_consist.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -1140,6 +1143,9 @@
     <ClInclude Include="..\src\string_type.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\os\windows\string_uniscribe.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="..\src\stringfilter_type.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -1461,6 +1467,9 @@
     <ClCompile Include="..\src\fios_gui.cpp">
       <Filter>GUI Source Code</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\framerate_gui.cpp">
+      <Filter>GUI Source Code</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\genworld_gui.cpp">
       <Filter>GUI Source Code</Filter>
     </ClCompile>
@@ -1654,6 +1663,9 @@
       <Filter>Widgets</Filter>
     </ClInclude>
     <ClInclude Include="..\src\widgets\fios_widget.h">
+      <Filter>Widgets</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\widgets\framerate_widget.h">
       <Filter>Widgets</Filter>
     </ClInclude>
     <ClInclude Include="..\src\widgets\genworld_widget.h">
@@ -3234,6 +3246,9 @@
     <ResourceCompile Include="..\src\os\windows\ottdres.rc">
       <Filter>Windows files</Filter>
     </ResourceCompile>
+    <ClCompile Include="..\src\os\windows\string_uniscribe.cpp">
+      <Filter>Windows files</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\os\windows\win32.cpp">
       <Filter>Windows files</Filter>
     </ClCompile>

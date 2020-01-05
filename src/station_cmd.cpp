@@ -75,7 +75,7 @@
  */
 bool IsHangar(TileIndex t)
 {
-	assert(IsTileType(t, MP_STATION));
+	assert_tile(IsTileType(t, MP_STATION), t);
 
 	/* If the tile isn't an airport there's no chance it's a hangar. */
 	if (!IsAirport(t)) return false;
@@ -733,7 +733,7 @@ CommandCost ClearTile_Station(TileIndex tile, DoCommandFlag flags);
  */
 CommandCost CheckBuildableTile(TileIndex tile, uint invalid_dirs, int &allowed_z, bool allow_steep, bool check_bridge = true)
 {
-	if (check_bridge && IsBridgeAbove(tile)) {
+	if (check_bridge && IsBridgeAbove(tile) && !_settings_game.construction.allow_stations_under_bridges) {
 		return_cmd_error(STR_ERROR_MUST_DEMOLISH_BRIDGE_FIRST);
 	}
 
@@ -1220,8 +1220,8 @@ static void RestoreTrainReservation(Train *v)
  * @param tile_org northern most position of station dragging/placement
  * @param flags operation to perform
  * @param p1 various bitstuffed elements
- * - p1 = (bit  0- 4) - railtype
- * - p1 = (bit  5)    - orientation (Axis)
+ * - p1 = (bit  0- 5) - railtype
+ * - p1 = (bit  6)    - orientation (Axis)
  * - p1 = (bit  8-15) - number of tracks
  * - p1 = (bit 16-23) - platform length
  * - p1 = (bit 24)    - allow stations directly adjacent to other stations.
@@ -1235,8 +1235,8 @@ static void RestoreTrainReservation(Train *v)
 CommandCost CmdBuildRailStation(TileIndex tile_org, DoCommandFlag flags, uint32 p1, uint32 p2, const char *text)
 {
 	/* Unpack parameters */
-	RailType rt    = Extract<RailType, 0, 5>(p1);
-	Axis axis      = Extract<Axis, 5, 1>(p1);
+	RailType rt    = Extract<RailType, 0, 6>(p1);
+	Axis axis      = Extract<Axis, 6, 1>(p1);
 	byte numtracks = GB(p1,  8, 8);
 	byte plat_len  = GB(p1, 16, 8);
 	bool adjacent  = HasBit(p1, 24);
@@ -2619,7 +2619,7 @@ CommandCost CmdBuildDock(TileIndex tile, DoCommandFlag flags, uint32 p1, uint32 
 	CommandCost ret = CheckIfAuthorityAllowsNewStation(slope_tile, flags);
 	if (ret.Failed()) return ret;
 
-	if (IsBridgeAbove(slope_tile)) return_cmd_error(STR_ERROR_MUST_DEMOLISH_BRIDGE_FIRST);
+	if (IsBridgeAbove(slope_tile) && !_settings_game.construction.allow_stations_under_bridges) return_cmd_error(STR_ERROR_MUST_DEMOLISH_BRIDGE_FIRST);
 
 	ret = DoCommand(slope_tile, 0, 0, flags, CMD_LANDSCAPE_CLEAR);
 	if (ret.Failed()) return ret;
@@ -2628,7 +2628,7 @@ CommandCost CmdBuildDock(TileIndex tile, DoCommandFlag flags, uint32 p1, uint32 
 		return_cmd_error(STR_ERROR_SITE_UNSUITABLE);
 	}
 
-	if (IsBridgeAbove(flat_tile)) return_cmd_error(STR_ERROR_MUST_DEMOLISH_BRIDGE_FIRST);
+	if (IsBridgeAbove(flat_tile) && !_settings_game.construction.allow_stations_under_bridges) return_cmd_error(STR_ERROR_MUST_DEMOLISH_BRIDGE_FIRST);
 
 	/* Get the water class of the water tile before it is cleared.*/
 	WaterClass wc = GetWaterClass(flat_tile);
@@ -3010,7 +3010,7 @@ draw_default_foundation:
 		if (ti->tileh == SLOPE_FLAT) {
 			DrawWaterClassGround(ti);
 		} else {
-			assert(IsDock(ti->tile));
+			assert_tile(IsDock(ti->tile), ti->tile);
 			TileIndex water_tile = ti->tile + TileOffsByDiagDir(GetDockDirection(ti->tile));
 			WaterClass wc = GetWaterClass(water_tile);
 			if (wc == WATER_CLASS_SEA) {
@@ -3080,6 +3080,7 @@ draw_default_foundation:
 	}
 
 	DrawRailTileSeq(ti, t, TO_BUILDINGS, total_offset, relocation, palette);
+	DrawBridgeMiddle(ti);
 }
 
 void StationPickerDrawSprite(int x, int y, StationType st, RailType railtype, RoadType roadtype, int image)
@@ -4074,7 +4075,7 @@ void BuildOilRig(TileIndex tile)
 
 	st->string_id = GenerateStationName(st, tile, STATIONNAMING_OILRIG);
 
-	assert(IsTileType(tile, MP_INDUSTRY));
+	assert_tile(IsTileType(tile, MP_INDUSTRY), tile);
 	DeleteAnimatedTile(tile);
 	MakeOilrig(tile, st->index, GetWaterClass(tile));
 
@@ -4191,7 +4192,7 @@ static void ChangeTileOwner_Station(TileIndex tile, Owner old_owner, Owner new_o
 		if (IsDriveThroughStopTile(tile)) {
 			/* Remove the drive-through road stop */
 			DoCommand(tile, 1 | 1 << 8, (GetStationType(tile) == STATION_TRUCK) ? ROADSTOP_TRUCK : ROADSTOP_BUS, DC_EXEC | DC_BANKRUPT, CMD_REMOVE_ROAD_STOP);
-			assert(IsTileType(tile, MP_ROAD));
+			assert_tile(IsTileType(tile, MP_ROAD), tile);
 			/* Change owner of tile and all roadtypes */
 			ChangeTileOwner(tile, old_owner, new_owner);
 		} else {

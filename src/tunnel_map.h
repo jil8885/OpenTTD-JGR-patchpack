@@ -26,7 +26,7 @@ static const TunnelID TUNNEL_ID_MAP_LOOKUP = 0xFFFF; ///< Sentinel ID value to s
  */
 static inline bool IsTunnel(TileIndex t)
 {
-	assert(IsTileType(t, MP_TUNNELBRIDGE));
+	assert_tile(IsTileType(t, MP_TUNNELBRIDGE), t);
 	return !HasBit(_m[t].m5, 7);
 }
 
@@ -50,9 +50,43 @@ static inline TunnelID GetTunnelIndex(TileIndex t)
 {
 	extern TunnelID GetTunnelIndexByLookup(TileIndex t);
 
-	assert(IsTunnelTile(t));
+	assert_tile(IsTunnelTile(t), t);
 	TunnelID map_id = _m[t].m2;
 	return map_id == TUNNEL_ID_MAP_LOOKUP ? GetTunnelIndexByLookup(t) : map_id;
+}
+
+/**
+ * Checks if this tile is a rail tunnel
+ * @param t the tile that might be a rail tunnel
+ * @return true if it is a rail tunnel
+ */
+static inline bool IsRailTunnelTile(TileIndex t)
+{
+	return IsTunnelTile(t) && (TransportType)GB(_m[t].m5, 2, 2) == TRANSPORT_RAIL;
+}
+
+/**
+ * Get the reservation state of the rail tunnel
+ * @pre IsRailTunnelTile(t)
+ * @param t the tile
+ * @return reservation state
+ */
+static inline bool HasTunnelReservation(TileIndex t)
+{
+	assert_tile(IsRailTunnelTile(t), t);
+	return HasBit(_m[t].m5, 4);
+}
+
+/**
+ * Set the reservation state of the rail tunnel
+ * @pre IsRailTunnelTile(t)
+ * @param t the tile
+ * @param b the reservation state
+ */
+static inline void SetTunnelReservation(TileIndex t, bool b)
+{
+	assert_tile(IsRailTunnelTile(t), t);
+	SB(_m[t].m5, 4, 1, b ? 1 : 0);
 }
 
 TileIndex GetOtherTunnelEnd(TileIndex);
@@ -75,7 +109,7 @@ bool IsTunnelInWay(TileIndex, int z, IsTunnelInWayFlags flags = ITIWF_NONE);
  */
 static inline void SetTunnelIndex(TileIndex t, TunnelID id)
 {
-	assert(IsTunnelTile(t));
+	assert_tile(IsTunnelTile(t), t);
 	_m[t].m2 = (id >= TUNNEL_ID_MAP_LOOKUP) ? TUNNEL_ID_MAP_LOOKUP : id;
 }
 
@@ -91,12 +125,13 @@ static inline void MakeRoadTunnel(TileIndex t, Owner o, TunnelID id, DiagDirecti
 {
 	SetTileType(t, MP_TUNNELBRIDGE);
 	SetTileOwner(t, o);
+	SetTunnelIndex(t, id);
 	_m[t].m3 = 0;
 	_m[t].m4 = 0;
 	_m[t].m5 = TRANSPORT_ROAD << 2 | d;
 	SB(_me[t].m6, 2, 4, 0);
 	_me[t].m7 = 0;
-	SetTunnelIndex(t, id);
+	_me[t].m8 = 0;
 	SetRoadOwner(t, ROADTYPE_ROAD, o);
 	if (o != OWNER_TOWN) SetRoadOwner(t, ROADTYPE_TRAM, o);
 	SetRoadTypes(t, r);
@@ -114,14 +149,13 @@ static inline void MakeRailTunnel(TileIndex t, Owner o, TunnelID id, DiagDirecti
 {
 	SetTileType(t, MP_TUNNELBRIDGE);
 	SetTileOwner(t, o);
-	SB(_m[t].m1, 7, 1, GB(r, 4, 1));
-	SB(_m[t].m3, 0, 4, GB(r, 0, 4));
-	SB(_m[t].m3, 4, 4, 0);
+	SetTunnelIndex(t, id);
+	_m[t].m3 = 0;
 	_m[t].m4 = 0;
 	_m[t].m5 = TRANSPORT_RAIL << 2 | d;
 	SB(_me[t].m6, 2, 4, 0);
 	_me[t].m7 = 0;
-	SetTunnelIndex(t, id);
+	_me[t].m8 = r;
 }
 
 #endif /* TUNNEL_MAP_H */
