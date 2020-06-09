@@ -199,15 +199,15 @@ char *CrashLog::LogConfiguration(char *buffer, const char *last) const
 			" Video driver: %s\n"
 			" Pathfinder:   %s %s %s\n\n",
 			BlitterFactory::GetCurrentBlitter() == nullptr ? "none" : BlitterFactory::GetCurrentBlitter()->GetName(),
-			BaseGraphics::GetUsedSet() == nullptr ? "none" : BaseGraphics::GetUsedSet()->name,
+			BaseGraphics::GetUsedSet() == nullptr ? "none" : BaseGraphics::GetUsedSet()->name.c_str(),
 			BaseGraphics::GetUsedSet() == nullptr ? UINT32_MAX : BaseGraphics::GetUsedSet()->version,
 			_current_language == nullptr ? "none" : _current_language->file,
 			MusicDriver::GetInstance() == nullptr ? "none" : MusicDriver::GetInstance()->GetName(),
-			BaseMusic::GetUsedSet() == nullptr ? "none" : BaseMusic::GetUsedSet()->name,
+			BaseMusic::GetUsedSet() == nullptr ? "none" : BaseMusic::GetUsedSet()->name.c_str(),
 			BaseMusic::GetUsedSet() == nullptr ? UINT32_MAX : BaseMusic::GetUsedSet()->version,
 			_networking ? (_network_server ? "server" : "client") : "no",
 			SoundDriver::GetInstance() == nullptr ? "none" : SoundDriver::GetInstance()->GetName(),
-			BaseSounds::GetUsedSet() == nullptr ? "none" : BaseSounds::GetUsedSet()->name,
+			BaseSounds::GetUsedSet() == nullptr ? "none" : BaseSounds::GetUsedSet()->name.c_str(),
 			BaseSounds::GetUsedSet() == nullptr ? UINT32_MAX : BaseSounds::GetUsedSet()->version,
 			VideoDriver::GetInstance() == nullptr ? "none" : VideoDriver::GetInstance()->GetName(),
 			pathfinder_name(_settings_game.pf.pathfinder_for_trains), pathfinder_name(_settings_game.pf.pathfinder_for_roadvehs), pathfinder_name(_settings_game.pf.pathfinder_for_ships)
@@ -626,7 +626,7 @@ bool CrashLog::WriteScreenshot(char *filename, const char *filename_last, const 
  * information like paths to the console.
  * @return true when everything is made successfully.
  */
-bool CrashLog::MakeCrashLog() const
+bool CrashLog::MakeCrashLog()
 {
 	/* Don't keep looping logging crashes. */
 	static bool crashlogged = false;
@@ -637,13 +637,17 @@ bool CrashLog::MakeCrashLog() const
 	char buffer[65536 * 4];
 	bool ret = true;
 
+	char *name_buffer_date = this->name_buffer + seprintf(this->name_buffer, lastof(this->name_buffer), "crash-");
+	time_t cur_time = time(nullptr);
+	strftime(name_buffer_date, lastof(this->name_buffer) - name_buffer_date, "%Y%m%dT%H%M%SZ", gmtime(&cur_time));
+
 	printf("Crash encountered, generating crash log...\n");
 	this->FillCrashLog(buffer, lastof(buffer));
 	printf("%s\n", buffer);
 	printf("Crash log generated.\n\n");
 
 	printf("Writing crash log to disk...\n");
-	bool bret = this->WriteCrashLog(buffer, filename, lastof(filename));
+	bool bret = this->WriteCrashLog(buffer, filename, lastof(filename), this->name_buffer);
 	if (bret) {
 		printf("Crash log written to %s. Please add this file to any bug reports.\n\n", filename);
 	} else {
@@ -662,6 +666,7 @@ bool CrashLog::MakeCrashLog() const
 
 	SetScreenshotAuxiliaryText("Crash Log", buffer);
 	_savegame_DBGL_data = buffer;
+	_save_DBGC_data = true;
 
 	if (IsNonMainThread()) {
 		printf("Asking main thread to write crash savegame and screenshot...\n\n");
@@ -716,6 +721,7 @@ bool CrashLog::MakeDesyncCrashLog(const std::string *log_in, std::string *log_ou
 	}
 
 	_savegame_DBGL_data = buffer;
+	_save_DBGC_data = true;
 	bret = this->WriteSavegame(filename, lastof(filename), name_buffer);
 	if (bret) {
 		printf("Desync savegame written to %s. Please add this file and the last (auto)save to any bug reports.\n\n", filename);
@@ -724,6 +730,7 @@ bool CrashLog::MakeDesyncCrashLog(const std::string *log_in, std::string *log_ou
 		printf("Writing desync savegame failed. Please attach the last (auto)save to any bug reports.\n\n");
 	}
 	_savegame_DBGL_data = nullptr;
+	_save_DBGC_data = false;
 
 	if (!(_screen.width < 1 || _screen.height < 1 || _screen.dst_ptr == nullptr)) {
 		SetScreenshotAuxiliaryText("Desync Log", buffer);
@@ -764,7 +771,7 @@ bool CrashLog::MakeCrashSavegameAndScreenshot() const
 	bool ret = true;
 
 	printf("Writing crash savegame...\n");
-	bool bret = this->WriteSavegame(filename, lastof(filename));
+	bool bret = this->WriteSavegame(filename, lastof(filename), this->name_buffer);
 	if (bret) {
 		printf("Crash savegame written to %s. Please add this file and the last (auto)save to any bug reports.\n\n", filename);
 	} else {
@@ -773,7 +780,7 @@ bool CrashLog::MakeCrashSavegameAndScreenshot() const
 	}
 
 	printf("Writing crash screenshot...\n");
-	bret = this->WriteScreenshot(filename, lastof(filename));
+	bret = this->WriteScreenshot(filename, lastof(filename), this->name_buffer);
 	if (bret) {
 		printf("Crash screenshot written to %s. Please add this file to any bug reports.\n\n", filename);
 	} else {

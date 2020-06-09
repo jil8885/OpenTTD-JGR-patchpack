@@ -53,7 +53,6 @@ void RebuildStationKdtree()
 
 BaseStation::~BaseStation()
 {
-	free(this->name);
 	free(this->speclist);
 
 	if (CleaningPool()) return;
@@ -378,12 +377,11 @@ bool Station::IsWithinRangeOfDockingTile(TileIndex tile, uint max_distance) cons
 /**
  * Add nearby industry to station's industries_near list if it accepts cargo.
  * @param ind Industry
- * @param st Station
  */
-static void AddIndustryToDeliver(Industry *ind, Station *st)
+void Station::AddIndustryToDeliver(Industry *ind)
 {
 	/* Don't check further if this industry is already in the list */
-	if (st->industries_near.find(ind) != st->industries_near.end()) return;
+	if (this->industries_near.find(ind) != this->industries_near.end()) return;
 
 	/* Include only industries that can accept cargo */
 	uint cargo_index;
@@ -392,7 +390,7 @@ static void AddIndustryToDeliver(Industry *ind, Station *st)
 	}
 	if (cargo_index >= lengthof(ind->accepts_cargo)) return;
 
-	st->industries_near.insert(ind);
+	this->industries_near.insert(ind);
 }
 
 /**
@@ -483,7 +481,7 @@ void Station::RecomputeCatchment(bool no_clear_nearby_lists)
 			i->stations_near.insert(this);
 
 			/* Add if we can deliver to this industry as well */
-			AddIndustryToDeliver(i, this);
+			this->AddIndustryToDeliver(i);
 		}
 	}
 }

@@ -546,6 +546,8 @@ public:
 		return this->count;
 	}
 
+	uint AvailableViaCount(StationID next) const;
+
 	/**
 	 * Returns sum of cargo reserved for loading onto vehicles.
 	 * @return Cargo reserved for loading.
@@ -580,8 +582,8 @@ public:
 	}
 
 	/**
-	 * Are two the two CargoPackets mergeable in the context of
-	 * a list of CargoPackets for a Vehicle?
+	 * Are the two CargoPackets mergeable in the context of
+	 * a list of CargoPackets for a Station?
 	 * @param cp1 First CargoPacket.
 	 * @param cp2 Second CargoPacket.
 	 * @return True if they are mergeable.

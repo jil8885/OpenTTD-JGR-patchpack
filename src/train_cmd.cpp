@@ -3051,7 +3051,7 @@ public:
 					this->v->current_order = *order;
 					return UpdateOrderDest(this->v, order, 0, true);
 				case OT_CONDITIONAL: {
-					VehicleOrderID next = ProcessConditionalOrder(order, this->v);
+					VehicleOrderID next = ProcessConditionalOrder(order, this->v, true);
 					if (next != INVALID_VEH_ORDER_ID) {
 						depth++;
 						this->index = next;
@@ -4057,7 +4057,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 					/* Currently the locomotive is active. Determine which one of the
 					 * available tracks to choose */
 					chosen_track = TrackToTrackBits(ChooseTrainTrack(v, gp.new_tile, enterdir, bits, false, nullptr, true));
-					assert(chosen_track & (bits | GetReservedTrackbits(gp.new_tile)));
+					assert_msg_tile(chosen_track & (bits | GetReservedTrackbits(gp.new_tile)), gp.new_tile, "0x%X, 0x%X, 0x%X", chosen_track, bits, GetReservedTrackbits(gp.new_tile));
 
 					if (v->force_proceed != TFP_NONE && IsPlainRailTile(gp.new_tile) && HasSignals(gp.new_tile)) {
 						/* For each signal we find decrease the counter by one.
@@ -4952,6 +4952,18 @@ static bool TrainLocoHandler(Train *v, bool mode)
 	if (v->current_order.IsType(OT_WAITING) && v->reverse_distance == 0) {
 		v->HandleWaiting(false);
 		if (v->current_order.IsType(OT_WAITING)) return true;
+		ProcessOrders(v);
+		if (IsRailWaypointTile(v->tile)) {
+			StationID station_id = GetStationIndex(v->tile);
+			if (v->current_order.ShouldStopAtStation(v, station_id, true)) {
+				UpdateVehicleTimetable(v, true);
+				v->last_station_visited = station_id;
+				SetWindowDirty(WC_VEHICLE_VIEW, v->index);
+				v->current_order.MakeWaiting();
+				v->current_order.SetNonStopType(ONSF_NO_STOP_AT_ANY_STATION);
+				return true;
+			}
+		}
 	}
 
 	if (!mode) v->ShowVisualEffect();

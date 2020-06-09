@@ -38,6 +38,7 @@
 #include <SDL_syswm.h>
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
+#include <X11/Xutil.h>
 #include <unistd.h>
 #endif
 
@@ -254,7 +255,9 @@ static void FcitxSYSWMEVENT(const SDL_SysWMEvent &event)
 	if (event.msg->subsystem != SDL_SYSWM_X11) return;
 	XEvent &xevent = event.msg->msg.x11.event;
 	if (xevent.type == KeyPress) {
-		KeySym keysym = XLookupKeysym(&xevent.xkey, 0);
+		char text[8];
+		KeySym keysym = 0;
+		XLookupString(&xevent.xkey, text, lengthof(text), &keysym, nullptr);
 		_fcitx_last_keycode = xevent.xkey.keycode;
 		_fcitx_last_keysym = keysym;
 	}
@@ -379,9 +382,7 @@ static void DrawSurfaceToScreen()
 	} else {
 		if (_sdl_surface != _sdl_realscreen) {
 			for (int i = 0; i < n; i++) {
-				SDL_BlitSurface(
-					_sdl_surface, &_dirty_rects[i],
-					_sdl_realscreen, &_dirty_rects[i]);
+				SDL_BlitSurface(_sdl_surface, &_dirty_rects[i], _sdl_realscreen, &_dirty_rects[i]);
 			}
 		}
 
@@ -939,7 +940,7 @@ int VideoDriver_SDL::PollEvent()
 	return -1;
 }
 
-const char *VideoDriver_SDL::Start(const char * const *parm)
+const char *VideoDriver_SDL::Start(const StringList &parm)
 {
 #if defined(WITH_FCITX)
 	FcitxInit();
@@ -969,7 +970,7 @@ const char *VideoDriver_SDL::Start(const char * const *parm)
 
 	MarkWholeScreenDirty();
 
-	_draw_threaded = GetDriverParam(parm, "no_threads") == nullptr && GetDriverParam(parm, "no_thread") == nullptr;
+	_draw_threaded = !GetDriverParamBool(parm, "no_threads") && !GetDriverParamBool(parm, "no_thread");
 
 	SDL_StopTextInput();
 	this->edit_box_focused = false;

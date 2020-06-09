@@ -59,6 +59,7 @@
 #include "../script/api/game/game_marine.hpp.sq"
 #include "../script/api/game/game_news.hpp.sq"
 #include "../script/api/game/game_order.hpp.sq"
+#include "../script/api/game/game_priorityqueue.hpp.sq"
 #include "../script/api/game/game_rail.hpp.sq"
 #include "../script/api/game/game_railtypelist.hpp.sq"
 #include "../script/api/game/game_road.hpp.sq"
@@ -147,6 +148,9 @@ void GameInstance::RegisterAPI()
 	SQGSEventIndustryOpen_Register(this->engine);
 	SQGSEventRoadReconstruction_Register(this->engine);
 	SQGSEventStationFirstVehicle_Register(this->engine);
+	SQGSEventStoryPageButtonClick_Register(this->engine);
+	SQGSEventStoryPageTileSelect_Register(this->engine);
+	SQGSEventStoryPageVehicleSelect_Register(this->engine);
 	SQGSEventSubsidyAwarded_Register(this->engine);
 	SQGSEventSubsidyExpired_Register(this->engine);
 	SQGSEventSubsidyOffer_Register(this->engine);
@@ -170,6 +174,7 @@ void GameInstance::RegisterAPI()
 	SQGSMarine_Register(this->engine);
 	SQGSNews_Register(this->engine);
 	SQGSOrder_Register(this->engine);
+	SQGSPriorityQueue_Register(this->engine);
 	SQGSRail_Register(this->engine);
 	SQGSRailTypeList_Register(this->engine);
 	SQGSRoad_Register(this->engine);
